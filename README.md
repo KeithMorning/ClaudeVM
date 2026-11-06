@@ -42,8 +42,18 @@ npm run dist:win
 ## 文档
 
 - [开发交接.md](开发交接.md) — 架构、约束、已知边界、踩坑记录
+- [tests/README.md](tests/README.md) — 测试体系：分层、坑→测试映射、发版 checklist
 - [claude-desktop/README.md](claude-desktop/README.md) — 应用侧功能与各版本修复说明
 - [claude-vm/README.md](claude-vm/README.md) — 早期 Docker 方案存档
+
+## 测试
+
+```bash
+node --test "tests/**/*.test.js"          # 全部（含 WSL 集成）
+node --test "tests/unit/*.test.js" "tests/static/*.test.js"   # 快速层（无副作用）
+```
+
+单元（mock WSL）+ 静态一致性（两侧脚本逐字节比对）+ 集成（net-guard 锁定/解锁往返实测），详见 [tests/README.md](tests/README.md)。
 
 ## License
 

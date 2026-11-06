@@ -1,0 +1,22 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>probe</title>
+<pre id="out">running…</pre>
+<script>
+const urls = ['https://claude.ai/', 'https://www.anthropic.com/', 'https://api.anthropic.com/'];
+const one = async (u) => {
+  const t0 = performance.now();
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), 3500);
+  try {
+    await fetch(u, { mode: 'no-cors', cache: 'no-store', signal: ac.signal });
+    return `${u} ok ${Math.round(performance.now() - t0)}ms`;
+  } catch (e) {
+    return `${u} FAIL(${e.name}) ${Math.round(performance.now() - t0)}ms`;
+  } finally { clearTimeout(timer); }
+};
+(async () => {
+  const lines = await Promise.all(urls.map(one));
+  document.getElementById('out').textContent = 'RESULT\n' + lines.join('\n');
+})();
+</script>

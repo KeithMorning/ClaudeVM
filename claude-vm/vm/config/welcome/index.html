@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Welcome</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --panel: #151b24;
+    --line: #232b38;
+    --ink: #e6eaf2;
+    --dim: #8d99ab;
+    --accent: #d97757;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: radial-gradient(120% 100% at 100% 100%, #2a1a14 0%, var(--bg) 55%);
+    color: var(--ink);
+    font: 14px/1.55 "DejaVu Sans", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    display: flex; align-items: center; justify-content: center;
+    overflow: hidden;
+  }
+  .card { width: 100%; padding: 40px 44px 32px; }
+  .logo { width: 40px; height: 40px; color: var(--accent); margin-bottom: 18px; }
+  h1 { font-size: 22px; margin: 0 0 6px; letter-spacing: -0.2px; font-weight: 600; }
+  .sub { color: var(--dim); margin: 0 0 26px; }
+  .step {
+    display: flex; gap: 14px; align-items: flex-start;
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 10px; padding: 16px 18px; margin-bottom: 12px;
+  }
+  .num {
+    flex: 0 0 24px; height: 24px; border-radius: 999px;
+    background: rgba(217,119,87,.16); color: var(--accent);
+    font-weight: 700; font-size: 12px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .step h2 { font-size: 14px; margin: 1px 0 3px; font-weight: 600; }
+  .step p { margin: 0; color: var(--dim); font-size: 13px; }
+  .kbd {
+    display: inline-block; padding: 1px 6px; border-radius: 5px;
+    background: #1d2532; border: 1px solid #2c3646;
+    font-family: "Fira Code", monospace; font-size: 11.5px; color: #c9d3e2;
+  }
+  .cta {
+    display: inline-flex; align-items: center; gap: 8px;
+    margin-top: 6px; padding: 11px 20px; border-radius: 9px;
+    background: var(--accent); color: #14100e; text-decoration: none;
+    font-weight: 600; font-size: 13.5px;
+  }
+  .cta:hover { background: #e5875f; }
+  .foot {
+    margin-top: 22px; padding-top: 16px; border-top: 1px solid var(--line);
+    color: #6f7b8d; font-size: 12px;
+    display: flex; justify-content: space-between; gap: 16px;
+  }
+  code { font-family: "Fira Code", monospace; color: #b9c4d4; }
+  /* app 模式没有系统标题栏，自带一个关闭按钮，避免用户关不掉 */
+  .close {
+    position: fixed; top: 14px; right: 16px; width: 30px; height: 30px;
+    border: 0; border-radius: 8px; cursor: pointer;
+    background: transparent; color: #6f7b8d; font-size: 17px; line-height: 1;
+  }
+  .close:hover { background: #1c2331; color: #e6eaf2; }
+</style>
+</head>
+<body>
+  <button class="close" title="Close" onclick="window.close()">✕</button>
+  <div class="card">
+    <svg class="logo" viewBox="0 0 64 64" fill="none" aria-hidden="true">
+      <g stroke="currentColor" stroke-width="5.2" stroke-linecap="round">
+        <path d="M32 6v10M32 48v10M6 32h10M48 32h10M13.6 13.6l7 7M43.4 43.4l7 7M50.4 13.6l-7 7M20.6 43.4l-7 7"/>
+      </g>
+      <circle cx="32" cy="32" r="8.5" fill="currentColor"/>
+    </svg>
+
+    <h1>Claude Workspace</h1>
+    <p class="sub">Your private Linux desktop is running. Two steps to get going.</p>
+
+    <div class="step">
+      <div class="num">1</div>
+      <div>
+        <h2>Sign in to Claude</h2>
+        <p>Use the same account you use on claude.ai.</p>
+      </div>
+    </div>
+
+    <a class="cta" href="https://claude.ai/login">Sign in with Chrome &nbsp;→</a>
+
+    <div class="step" style="margin-top:22px">
+      <div class="num">2</div>
+      <div>
+        <h2>Start Claude Code</h2>
+        <p>Click the orange icon in the dock below, or press <span class="kbd">Super</span>+<span class="kbd">C</span>.</p>
+      </div>
+    </div>
+
+    <div class="foot">
+      <span>Files are shared with <code>/workspace</code> — that folder is on your PC.</span>
+      <span>Claude Workspace 1.0</span>
+    </div>
+  </div>
+</body>
+</html>

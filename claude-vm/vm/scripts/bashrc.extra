@@ -1,0 +1,8 @@
+# ---- Claude Workspace ----
+# 提示符不写 user@host：这是「像服务器」最明显的记号
+PS1='\[\e[38;5;179m\]\w\[\e[0m\] \[\e[38;5;111m\]\$\e[0m\] '
+PROMPT_COMMAND=''
+export TERM=xterm-256color 2>/dev/null
+alias ll='ls -alF --color=auto'
+alias la='ls -A --color=auto'
+alias ..='cd ..'

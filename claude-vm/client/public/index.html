@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Claude VM 控制台</title>
+<style>
+  body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; margin: 0; color: #111; }
+  header { background: #1f2937; color: #fff; padding: 10px 16px; display: flex; gap: 14px; align-items: center; }
+  header strong { font-size: 16px; }
+  #status { font-size: 13px; color: #9ca3af; }
+  main { display: flex; height: calc(100vh - 46px); }
+  .side { width: 340px; padding: 16px; box-sizing: border-box; overflow: auto; border-right: 1px solid #e5e7eb; }
+  iframe { flex: 1; border: 0; background: #0b1020; }
+  h3 { margin: 18px 0 6px; font-size: 13px; text-transform: uppercase; color: #6b7280; letter-spacing: .04em; }
+  button { padding: 7px 12px; margin: 3px 0; cursor: pointer; border: 0; border-radius: 6px; background: #2563eb; color: #fff; font-size: 13px; }
+  button.ghost { background: #e5e7eb; color: #111; }
+  button.danger { background: #dc2626; }
+  a button { text-decoration: none; display: inline-block; }
+  pre { background: #0b1020; color: #9effa0; padding: 10px; height: 260px; overflow: auto; font-size: 12px; border-radius: 6px; white-space: pre-wrap; }
+  .hint { font-size: 12px; color: #6b7280; line-height: 1.5; }
+</style>
+</head>
+<body>
+<header>
+  <strong>Claude VM</strong>
+  <span id="status">检测中…</span>
+</header>
+<main>
+  <div class="side">
+    <h3>串流桌面（本机 noVNC）</h3>
+    <a href="http://localhost:6080/vnc.html?autoconnect=true&password=claudevm" target="stream">
+      <button>打开虚拟环境桌面</button>
+    </a>
+    <p class="hint">桌面里用 “Chrome (Login)” 图标完成 claude.ai 登录（已自动走代理）。终端里直接跑 <code>claude</code>。</p>
+
+    <h3>check-cc 环境校对</h3>
+    <button id="check">运行自检（对照 check-cc 风险维度）</button>
+    <pre id="result">点击“运行自检”…</pre>
+
+    <h3>生命周期</h3>
+    <button id="stop" class="danger">停止容器</button>
+    <p class="hint">工作区挂载在宿主 <code>~/claude-workspace</code>（容器里是 /workspace），文件直接互通。</p>
+  </div>
+  <iframe name="stream" src="http://localhost:6080/vnc.html?autoconnect=true&password=claudevm"></iframe>
+</main>
+<script src="app.js"></script>
+</body>
+</html>

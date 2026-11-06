@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Claude VM</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app">
+    <!-- 左侧：设置 -->
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="logo">CV</div>
+        <div>
+          <div class="brand-title">Claude VM</div>
+          <div class="brand-sub">隔离虚拟环境 · 原生窗口</div>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>地区（时区 / 语言）</label>
+        <select id="region">
+          <option value="tw-taipei">中国台湾地区·台北 · Asia/Taipei（UTC+8，推荐）</option>
+          <option value="us-east">美国东部 · America/New_York</option>
+          <option value="us-west">美国西部 · America/Los_Angeles</option>
+          <option value="uk">英国 · Europe/London</option>
+          <option value="jp">日本 · Asia/Tokyo</option>
+          <option value="de">德国 · Europe/Berlin</option>
+          <option value="sg">新加坡 · Asia/Singapore</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label>本机代理</label>
+        <div class="row">
+          <input id="proxy" type="text" placeholder="http://127.0.0.1:7897" spellcheck="false" />
+          <button id="proxyDetect" class="btn ghost">自动检测</button>
+        </div>
+        <details class="hint-details">
+          <summary>说明</summary>
+          <div class="hint" id="proxyHint">
+            Clash / v2ray / 任何 HTTP 代理都行。填 127.0.0.1 会自动换成虚拟机可见的宿主地址。
+            留空则直连 —— 直连通常登录不了 Claude Code，也就失去了用它的意义。
+          </div>
+        </details>
+      </div>
+
+      <div class="field">
+        <label>分流方式</label>
+        <select id="proxyMode">
+          <option value="all">全部流量经代理（推荐）</option>
+          <option value="whitelist">仅 Anthropic 相关域名经代理</option>
+        </select>
+        <details class="hint-details">
+          <summary>说明</summary>
+          <div class="hint">
+            选「全部」时，虚拟机的出口 IP、DNS 解析、Cloudflare 边缘节点三者由你的代理统一决定，
+            彼此自洽；这也是「一台真实电脑」该有的样子。若你的代理规则里已把国内域名设为直连，
+            它仍会按你的规则直连，不用在这里操心。
+          </div>
+        </details>
+      </div>
+
+      <div class="field">
+        <label>网络熔断（代理断开即断网）</label>
+        <select id="netGuard">
+          <option value="strict">严格 · 只允许经代理出网（推荐）</option>
+          <option value="off">关闭 · 代理断开时允许直连（不推荐）</option>
+        </select>
+        <details class="hint-details">
+          <summary>说明</summary>
+          <div class="hint">
+            严格模式下会移除虚拟机的默认路由并关闭 IPv6：代理一断，网络内核层面直接不通，
+            绝不会回落到本机直连暴露真实环境。启动前还会校验代理是否真的生效、出口地区、
+            多源出口一致性；校验不过就保持断网并写明原因。
+          </div>
+        </details>
+      </div>
+
+      <div class="field">
+        <label>显示模式</label>
+        <select id="displayMode">
+          <option value="wslg">WSLg 原生窗口（推荐 · 终端用 Claude Code）</option>
+          <option value="desktop">串流桌面（noVNC · 完整桌面 / 浏览器）</option>
+        </select>
+        <details class="hint-details">
+          <summary>说明</summary>
+          <div class="hint" id="displayHint">
+            原生窗口模式下终端是 Windows 独立窗口，剪贴板与音频直接走系统，跟本机终端几乎一样；
+            中文用宿主输入法打好后复制，在终端里 Ctrl+Shift+V 粘贴。需要浏览器或完整桌面时切到串流桌面。
+          </div>
+        </details>
+      </div>
+
+      <div class="field" id="wlBox" hidden>
+        <label>代理域名白名单</label>
+        <input id="whitelist" type="text" spellcheck="false" />
+        <div class="hint">逗号分隔，默认覆盖 api.anthropic.com / claude.ai / *.claudeusercontent.com</div>
+      </div>
+
+      <div class="field">
+        <label>中文输入法（WSLg 终端）</label>
+        <select id="inputMethod">
+          <option value="off">关闭 · 用宿主输入法打好后粘贴</option>
+          <option value="rime">Rime 万象拼音（IBus · 简体词库）</option>
+        </select>
+        <details class="hint-details">
+          <summary>说明</summary>
+          <div class="hint">
+            WSLg 不转发 Windows IME 的组合串，所以把输入法放在虚拟机内部跑，
+            经 XIM 把中文提交给 xterm → Claude Code。词库随安装包离线提供（26MB），
+            首次启用只需联网装约 20MB 的 IBus 组件，不装任何中文字体包，不影响检测评分。
+            切换后要「停止 → 启动」才生效。
+          </div>
+        </details>
+      </div>
+
+      <div class="field">
+        <label>工作区（与主机共享目录）</label>
+        <div class="row">
+          <input id="workspace" type="text" spellcheck="false" />
+          <button id="pick" class="btn ghost" title="选择目录">…</button>
+        </div>
+        <a id="openWs" class="link">在资源管理器中打开</a>
+      </div>
+
+      <div class="actions">
+        <button id="start" class="btn primary">启动虚拟环境</button>
+        <button id="stop" class="btn danger" disabled>停止</button>
+      </div>
+
+      <div class="status" id="status">未启动</div>
+      <div class="guard-badge" id="guardBadge" hidden title="点击查看自检中的网络熔断分项"></div>
+      <div class="egress" id="egress" hidden></div>
+
+      <div class="check-block">
+        <button id="check" class="btn ghost">运行环境自检（check-cc 维度）</button>
+        <div id="checkChip" class="check-chip" hidden></div>
+      </div>
+
+      <div class="check-block row">
+        <button id="diag" class="btn ghost" title="把配置、自检结果和最近的运行日志打包成一个文件，出问题时发给开发者">导出诊断包</button>
+        <button id="diagOpen" class="link" title="打开日志目录">日志</button>
+      </div>
+
+      <div class="foot">本地 WSL 运行时 · 无 Docker 依赖</div>
+    </aside>
+
+    <!-- 右侧：串流桌面 -->
+    <main class="stage">
+      <div id="placeholder" class="placeholder">
+        <div class="ph-icon">▣</div>
+        <div class="ph-title" id="phTitle">虚拟环境尚未启动</div>
+        <div class="ph-sub" id="phSub">点击左侧「启动虚拟环境」，Claude Code 终端窗口会以原生窗口弹出。</div>
+      </div>
+
+      <!-- WSLg 模式：没有可嵌入的画面，窗口都在 Windows 桌面上，这里只做状态与入口 -->
+      <div id="wslgPanel" class="wslg-panel" hidden>
+        <div class="wslg-badge">WSLg 原生窗口</div>
+        <h2>Claude Code 在独立窗口里运行</h2>
+        <p>启动后终端窗口会自己出现在 Windows 桌面上。它不是网页串流：剪贴板、音频、缩放都由系统原生处理，和使用本机终端几乎一样。</p>
+        <div id="wslgAuth" class="wslg-auth">正在检查登录态…</div>
+        <div class="wslg-actions">
+          <button id="wslgTerminal" class="btn primary">打开 Claude Code 终端</button>
+          <button id="wslgShell" class="btn ghost">打开普通终端</button>
+          <button id="wslgLogin" class="btn ghost" hidden>打开浏览器完成授权</button>
+        </div>
+        <div class="wslg-tips">
+          <div><b>中文输入</b>：Windows 侧用输入法打好后复制，在终端里按 <code>Ctrl+Shift+V</code> 粘贴。不需要在虚拟机里装输入法或中文字体。</div>
+          <div><b>登录授权</b>：只在第一次做一次，凭据留在虚拟环境里；之后开终端即可直接使用。</div>
+          <div><b>需要浏览器或完整桌面</b>：把左侧「显示模式」切到「串流桌面」，点停止再启动。</div>
+        </div>
+      </div>
+      <webview id="view" class="view" hidden allowpopups></webview>
+
+      <!-- 环境自检结果面板 -->
+      <div id="checkPanel" class="cp-mask" hidden>
+        <div class="cp-card">
+          <div class="cp-head">
+            <div>
+              <div class="cp-title">环境一致性自检</div>
+              <div class="cp-sub" id="cpSub">对照 check-cc 的封号风险维度逐项核对</div>
+            </div>
+            <button id="cpClose" class="cp-x" title="关闭">✕</button>
+          </div>
+
+          <div id="cpVerdict" class="cp-verdict"></div>
+
+          <div id="cpBody" class="cp-body"></div>
+
+          <pre id="cpRaw" class="cp-raw" hidden></pre>
+
+          <div class="cp-foot">
+            <button id="cpRerun" class="btn ghost">重新检测</button>
+            <button id="cpFilter" class="btn ghost" hidden>显示全部</button>
+            <button id="cpRawToggle" class="btn ghost">原始输出</button>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+  <script src="renderer.js"></script>
+</body>
+</html>

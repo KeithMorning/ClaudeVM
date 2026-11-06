@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Claude Workspace</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+  html, body {
+    margin: 0; padding: 0; height: 100%; overflow: hidden;
+    background: #0d1017;
+    font: 13px/1.5 "DejaVu Sans", system-ui, sans-serif;
+    color: #8b98ab;
+  }
+  /* noVNC 1.0 会往这里插自己的 #screen 容器 + canvas，容器只要铺满即可 */
+  #screen { position: fixed; inset: 0; background: #0d1017; }
+  #screen canvas { outline: none; }
+  /* 连接中的提示：连上后淡出，不拦截鼠标 */
+  #hint {
+    position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+    flex-direction: column; gap: 10px; pointer-events: none;
+    background: #0d1017; transition: opacity .3s ease;
+  }
+  #hint.gone { opacity: 0; }
+  .dot {
+    width: 34px; height: 34px; border-radius: 50%;
+    border: 2px solid #2a3344; border-top-color: #d97757;
+    animation: spin 1s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<div id="screen"></div>
+<div id="hint"><div class="dot"></div><div id="hintText">Connecting to your desktop…</div></div>
+
+<script type="module">
+import RFB from './core/rfb.js';
+
+const stage = document.getElementById('screen');
+const hint = document.getElementById('hint');
+const hintText = document.getElementById('hintText');
+
+const params = new URLSearchParams(location.search);
+const host = params.get('host') || location.hostname || '127.0.0.1';
+const port = params.get('port') || location.port || '6080';
+const path = params.get('path') || 'websockify';
+const password = params.get('password') || '';
+const url = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${host}${port ? ':' + port : ''}/${path}`;
+
+let rfb = null;
+let pendingOut = '';
+let retry = 0;
+
+/* ---------- 剪贴板桥：宿主 Electron <-> 虚拟机 ----------
+   宿主编排层用 executeJavaScript 调这几个函数做双向同步：
+     __clipSet(text)  宿主机复制了东西 -> 推给虚拟机
+     __clipTaken()    虚拟机里复制了东西 -> 取走（取一次清一次，防回环）
+     __rfbState()     排查用，返回真实连接状态字符串 */
+window.__clipSet = (t) => {
+  try { if (rfb && rfb.clipboardPasteFrom) rfb.clipboardPasteFrom(String(t ?? '')); } catch (e) {}
+};
+window.__clipTaken = () => { const t = pendingOut; pendingOut = ''; return t; };
+window.__rfbState = () => (rfb ? (rfb._rfb_connection_state || 'unknown') : 'none');
+
+const focusStage = () => { const c = stage.querySelector('canvas'); if (c) c.focus(); };
+
+function say(text) {
+  hintText.textContent = text;
+  hint.classList.remove('gone');
+}
+
+function connect() {
+  try {
+    rfb = new RFB(stage, url, { credentials: { password }, shared: true });
+  } catch (err) {
+    say('Cannot start session: ' + ((err && err.message) || err));
+    return;
+  }
+  // 关键：不缩放画面，而是让远端按窗口实际大小改分辨率。
+  // scaleViewport 是把 1600x900 硬拉成窗口尺寸（文字发虚、细线断掉），
+  // resizeSession 走 RFB 的 SetDesktopSize，Xrandr 真改，1 个像素对 1 个像素。
+  rfb.scaleViewport = false;
+  rfb.resizeSession = true;
+
+  // 画质优先：局域网带宽足够，不需要为了省流量牺牲清晰度。
+  // qualityLevel 9 = Tight 编码里最高画质（不降采样），compressionLevel 1 = 几乎不丢细节。
+  try { rfb.qualityLevel = 9; } catch (e) {}
+  try { rfb.compressionLevel = 1; } catch (e) {}
+
+  rfb.addEventListener('connect', () => {
+    retry = 0;
+    hint.classList.add('gone');
+    focusStage();               // 连上就把键盘焦点交给虚拟机，特殊键直接生效
+  });
+  rfb.addEventListener('disconnect', (e) => {
+    const why = (e && e.detail && e.detail.clean) ? 'session closed' : 'connection lost';
+    say('Desktop disconnected (' + why + ') — reconnecting…');
+    setTimeout(connect, Math.min(600 * ++retry, 4000));
+  });
+  rfb.addEventListener('clipboard', (e) => {
+    // 虚拟机里按 Ctrl+C / 选区复制 -> 暂存，等宿主来取
+    pendingOut = e.detail.text || '';
+  });
+}
+
+// 浏览器原生粘贴（Ctrl+V）直接送进虚拟机，不用等轮询
+window.addEventListener('paste', (ev) => {
+  const t = ev.clipboardData && ev.clipboardData.getData('text');
+  if (t) window.__clipSet(t);
+});
+
+// 鼠标按下即抓焦点：避免「点了没反应、按键不生效」
+window.addEventListener('mousedown', () => focusStage(), true);
+window.addEventListener('contextmenu', (e) => e.preventDefault());
+
+connect();
+</script>
+</body>
+</html>

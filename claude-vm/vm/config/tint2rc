@@ -1,0 +1,172 @@
+# tint2 面板 —— 底部一条，替代 icewm 自带任务栏
+# 目标：一眼看上去像「桌面系统」，而不是远程服务器。
+# 布局 L=启动器 T=任务栏 S=托盘 C=时钟
+
+#-------------------------------------
+# 背景（按出现顺序编号，从 1 开始）
+#-------------------------------------
+# 1: 面板
+rounded = 0
+border_width = 1
+border_sides = T
+border_color = #262e3c 100
+background_color = #0f131a 100
+background_color_hover = #0f131a 100
+border_color_hover = #262e3c 100
+background_color_pressed = #0f131a 100
+border_color_pressed = #262e3c 100
+
+# 2: 普通任务
+rounded = 7
+border_width = 0
+border_sides = TBLR
+background_color = #191f2b 100
+border_color = #000000 0
+background_color_hover = #222a3a 100
+border_color_hover = #000000 0
+background_color_pressed = #141a26 100
+border_color_pressed = #000000 0
+
+# 3: 当前任务
+rounded = 7
+border_width = 0
+border_sides = TBLR
+background_color = #2b3549 100
+border_color = #000000 0
+background_color_hover = #33405a 100
+border_color_hover = #000000 0
+background_color_pressed = #232c3d 100
+border_color_pressed = #000000 0
+
+# 4: 紧急任务
+rounded = 7
+border_width = 0
+border_sides = TBLR
+background_color = #b4582f 100
+border_color = #000000 0
+background_color_hover = #c9673a 100
+border_color_hover = #000000 0
+background_color_pressed = #9c4a26 100
+border_color_pressed = #000000 0
+
+# 5: 提示气泡
+rounded = 6
+border_width = 1
+border_sides = TBLR
+background_color = #161c26 100
+border_color = #2c3546 100
+background_color_hover = #161c26 100
+border_color_hover = #2c3546 100
+background_color_pressed = #161c26 100
+border_color_pressed = #2c3546 100
+
+#-------------------------------------
+# 面板
+#-------------------------------------
+panel_items = LTSC
+panel_size = 100% 46
+panel_margin = 0 0
+panel_padding = 10 5 10
+panel_background_id = 1
+panel_position = bottom center horizontal
+panel_layer = top
+panel_monitor = all
+panel_shrink = 0
+strut_policy = follow_size
+disable_transparency = 1
+mouse_effects = 1
+font_shadow = 0
+mouse_hover_icon_asb = 100 0 12
+mouse_pressed_icon_asb = 100 0 0
+
+#-------------------------------------
+# 任务栏
+#-------------------------------------
+taskbar_mode = single_desktop
+taskbar_hide_if_empty = 0
+taskbar_padding = 10 0 10
+taskbar_background_id = 0
+taskbar_active_background_id = 0
+taskbar_name = 0
+taskbar_hide_inactive_tasks = 0
+taskbar_hide_different_monitor = 0
+taskbar_distribute_size = 0
+taskbar_sort_order = none
+task_align = left
+
+#-------------------------------------
+# 任务按钮
+#-------------------------------------
+task_text = 1
+task_icon = 0
+task_centered = 1
+task_maximum_size = 220 34
+task_padding = 9 4 11
+task_font = DejaVu Sans 10
+task_tooltip = 1
+task_thumbnail = 0
+task_font_color = #c3ccdb 100
+task_active_font_color = #ffffff 100
+task_background_id = 2
+task_active_background_id = 3
+task_urgent_background_id = 4
+task_iconified_background_id = 2
+mouse_left = toggle_iconify
+mouse_middle = close
+mouse_right = close
+mouse_scroll_up = toggle
+mouse_scroll_down = iconify
+
+#-------------------------------------
+# 托盘
+#-------------------------------------
+systray_padding = 4 2 6
+systray_background_id = 0
+systray_sort = ascending
+systray_icon_size = 20
+systray_icon_asb = 100 0 0
+systray_monitor = 1
+
+#-------------------------------------
+# 启动器（面板最左边那排图标）
+#-------------------------------------
+launcher_padding = 4 2 8
+launcher_background_id = 0
+launcher_icon_background_id = 0
+launcher_icon_size = 30
+launcher_icon_asb = 100 0 0
+launcher_icon_theme_override = 0
+launcher_tooltip = 1
+launcher_item_app = claude-login.desktop
+launcher_item_app = claude-code.desktop
+launcher_item_app = claude-terminal.desktop
+launcher_item_app = claude-files.desktop
+
+#-------------------------------------
+# 时钟
+#-------------------------------------
+time1_format = %H:%M
+time2_format = %a %d %b
+time1_font = DejaVu Sans 11 bold
+time2_font = DejaVu Sans 8
+clock_font_color = #9aa6b8 100
+clock_padding = 12 0
+clock_tooltip =
+clock_lclick_command =
+clock_rclick_command =
+
+#-------------------------------------
+# 电池（WSL 里没有，直接隐藏）
+#-------------------------------------
+battery_hide = 101
+battery_tooltip = 0
+
+#-------------------------------------
+# 提示气泡
+#-------------------------------------
+tooltip_show_timeout = 0.4
+tooltip_hide_timeout = 0.1
+tooltip_padding = 6 5
+tooltip_background_id = 5
+tooltip_font_color = #d5dce8 100
+tooltip_font = DejaVu Sans 9

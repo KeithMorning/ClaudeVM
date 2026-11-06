@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Terminal
+Comment=Shell in /workspace
+Exec=/opt/scripts/run-terminal.sh
+Icon=/opt/icons/terminal.png
+Terminal=false
+StartupNotify=false
+Categories=System;TerminalEmulator;

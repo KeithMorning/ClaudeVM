@@ -1,0 +1,73 @@
+!! Claude — openbox 主题
+!! 目的：扁平深色标题栏，和壁纸 / 面板 / 终端同一套色。
+!! 只用纯色（flat solid），不带位图，任何分辨率都干净。
+
+!! ---------------- 窗口 ----------------
+window.active.title.bg: flat solid
+window.active.title.bg.color: #1f2938
+window.active.label.text.color: #e8edf5
+window.active.border.color: #2b3546
+window.active.client.color: #0d1017
+window.active.handle.bg: flat solid
+window.active.handle.bg.color: #1f2938
+window.active.grip.bg: flat solid
+window.active.grip.bg.color: #1c2534
+
+window.inactive.title.bg: flat solid
+window.inactive.title.bg.color: #161d28
+window.inactive.label.text.color: #7d899c
+window.inactive.border.color: #1e2632
+window.inactive.client.color: #0d1017
+window.inactive.handle.bg: flat solid
+window.inactive.handle.bg.color: #141a24
+window.inactive.grip.bg: flat solid
+window.inactive.grip.bg.color: #141a24
+
+window.label.active.text.color: #e8edf5
+window.label.inactive.text.color: #7d899c
+window.label.active.text.justify: center
+window.label.inactive.text.justify: center
+window.active.title.separator.color: #2b3546
+window.inactive.title.separator.color: #1e2632
+
+!! 按钮：透明底 + 单色字形（不开方框，避免出现一块块色斑）
+window.*.button.*.bg: parentrelative
+window.active.button.*.image.color: #b9c4d6
+window.active.button.*.hover.image.color: #ffffff
+window.inactive.button.*.image.color: #6e7a8d
+window.active.button.*.hover.bg: flat solid
+window.active.button.*.hover.bg.color: #2b3546
+window.inactive.button.*.hover.bg: flat solid
+window.inactive.button.*.hover.bg.color: #1e2632
+window.active.button.*.pressed.bg: flat solid
+window.active.button.*.pressed.bg.color: #3a465c
+window.inactive.button.*.pressed.bg: flat solid
+window.inactive.button.*.pressed.bg.color: #26303f
+
+!! ---------------- 尺寸 ----------------
+border.width: 1
+padding.width: 8
+padding.height: 5
+window.handle.width: 0
+window.client.padding.width: 0
+window.client.padding.height: 0
+
+!! ---------------- 菜单 ----------------
+menu.border.color: #2b3546
+menu.items.bg: flat solid
+menu.items.bg.color: #151b25
+menu.items.text.color: #d6dee9
+menu.items.disabled.text.color: #5e6a7c
+menu.items.active.bg: flat solid
+menu.items.active.bg.color: #2b3546
+menu.items.active.text.color: #ffffff
+menu.title.bg: flat solid
+menu.title.bg.color: #1f2938
+menu.title.text.color: #9aa6b8
+menu.separator.color: #2b3546
+
+!! ---------------- 屏幕提示 ----------------
+osd.bg: flat solid
+osd.bg.color: #151b25
+osd.border.color: #2b3546
+osd.text.color: #e8edf5

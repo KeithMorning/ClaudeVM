@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Sign in to Claude
+GenericName=Browser
+Comment=Open Chrome at claude.ai/login (traffic via the local proxy router)
+Exec=/opt/scripts/run-chrome.sh
+Icon=/opt/icons/globe.png
+Terminal=false
+StartupNotify=false
+Categories=Network;WebBrowser;

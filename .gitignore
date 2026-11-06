@@ -1,0 +1,36 @@
+# 依赖
+node_modules/
+
+# 打包产物
+dist/
+dist-*/
+_pack/
+
+# 运行时镜像（650MB，不进版本库；用 build-rootfs.sh 生成或单独传递）
+claude-desktop/runtime/rootfs.tar.gz
+claude-desktop/runtime/rootfs-slim.tar.gz
+
+# sync-scripts 生成的副本（真源在 claude-vm/vm/）
+claude-desktop/runtime/scripts/
+claude-desktop/runtime/assets/
+
+# 排障临时物
+build/tmp-ud*/
+build/*.png
+build/*.log
+build/rootfs-full-backup.tar.gz
+build/slimtest/
+*.log
+
+# WSL 发行版导出
+slim*.tar.gz
+
+# 本地构建缓存 / CI 虚拟磁盘 / 截图（2.4 GB，含 vhdx，绝不能进版本库）
+# 但打包图标是构建必需品（package.json → build.icon），单独放行
+claude-desktop/build/*
+!claude-desktop/build/icon.png
+!claude-desktop/build/icon.ico
+*.vhdx
+
+# 工作区记忆与本地会话数据
+.workbuddy/

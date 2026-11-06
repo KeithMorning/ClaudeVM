@@ -1,0 +1,29 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>font probe</title>
+<body style="background:#101418;color:#e6e9ef;font:16px/1.6 sans-serif">
+<pre id="out">running…</pre>
+<p style="font-size:22px">中文渲染测试：环境一致性自检 · 代理链路校验 · 系统时区 America/Los_Angeles</p>
+<script>
+// 完全照搬 checkcc 的 hasFont：比较「指定字体 + 回退族」与「纯回退族」的字宽
+function hasFont(font) {
+  const ctx = document.createElement('canvas').getContext('2d');
+  if (!ctx) return false;
+  const text = '中文字体检测ABCabc012';
+  return ['monospace', 'sans-serif', 'serif'].some((base) => {
+    ctx.font = `72px ${base}`;
+    const a = ctx.measureText(text).width;
+    ctx.font = `72px "${font}", ${base}`;
+    return Math.abs(ctx.measureText(text).width - a) > 0.5;
+  });
+}
+const sc = ['Microsoft YaHei','Microsoft JhengHei','PingFang SC','Hiragino Sans GB','STHeiti',
+  'STSong','SimSun','SimHei','Noto Sans CJK SC','Source Han Sans SC','WenQuanYi Micro Hei'];
+const tc = ['PingFang TC','Heiti TC','Hiragino Sans CNS','Noto Sans CJK TC','Source Han Sans TC','MingLiU','PMingLiU'];
+const vendor = ['MiSans','HarmonyOS Sans','OPPO Sans','vivo Sans','Honor Sans',
+  'Alibaba PuHuiTi','WPS Fangzheng','FZLanTingHeiS'];
+const hits = [...sc, ...tc, ...vendor].filter(hasFont);
+document.getElementById('out').textContent =
+  'RESULT\n命中名单字体: ' + (hits.length ? hits.join(' / ') : '无（0 个）') +
+  '\n对照 Noto Sans SC（应在名单外，只是用于渲染）: ' + hasFont('Noto Sans SC');
+</script>

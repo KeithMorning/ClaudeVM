@@ -1,0 +1,84 @@
+{
+  "name": "claude-desktop",
+  "version": "1.0.30",
+  "description": "Claude VM 桌面版：一键启动隔离的 Linux 虚拟环境（Chrome + Claude Code + 代理接入 + 串流桌面）",
+  "main": "app/main.js",
+  "author": "claude-vm",
+  "license": "MIT",
+  "scripts": {
+    "sync-scripts": "node scripts/sync-scripts.js",
+    "prestart": "npm run sync-scripts",
+    "predist:win": "npm run sync-scripts",
+    "predist:portable": "npm run sync-scripts",
+    "predist:all": "npm run sync-scripts",
+    "start": "electron .",
+    "dist:win": "electron-builder --win nsis",
+    "dist:portable": "electron-builder --win portable",
+    "dist:all": "electron-builder -mwl"
+  },
+  "devDependencies": {
+    "electron": "^45.2.1",
+    "electron-builder": "^26.18.0"
+  },
+  "build": {
+    "appId": "com.claudevm.desktop",
+    "productName": "Claude VM",
+    "directories": {
+      "output": "dist"
+    },
+    "compression": "store",
+    "files": [
+      "app/**/*",
+      "package.json"
+    ],
+    "icon": "build/icon.png",
+    "extraResources": [
+      {
+        "from": "runtime/rootfs.tar.gz",
+        "to": "rootfs.tar.gz"
+      },
+      {
+        "from": "runtime/scripts",
+        "to": "scripts"
+      },
+      {
+        "from": "runtime/assets",
+        "to": "assets"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Claude VM",
+      "artifactName": "ClaudeVM-Setup-${version}-${arch}.${ext}"
+    },
+    "portable": {
+      "artifactName": "ClaudeVM-Portable-${version}-${arch}.${ext}"
+    },
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "category": "public.app-category.developer-tools"
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "category": "Development"
+    }
+  }
+}

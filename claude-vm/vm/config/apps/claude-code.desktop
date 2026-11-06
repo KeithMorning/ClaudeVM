@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Claude Code
+Comment=Start Claude Code in /workspace
+Exec=/opt/scripts/run-claude.sh
+Icon=/opt/icons/claude.png
+Terminal=false
+StartupNotify=false
+Categories=Development;

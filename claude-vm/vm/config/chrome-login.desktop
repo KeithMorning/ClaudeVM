@@ -1,0 +1,9 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Chrome (Login)
+Comment=Open Chrome for claude.ai login via the configured proxy
+Exec=/opt/scripts/chrome-login.sh
+Icon=google-chrome
+Terminal=false
+Categories=Network;

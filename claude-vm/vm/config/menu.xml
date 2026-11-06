@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- 桌面右键菜单 -->
+<openbox_menu xmlns="http://openbox.org/3.4/menu">
+  <menu id="root-menu" label="Desktop">
+    <item label="Sign in to Claude (Chrome)">
+      <action name="Execute"><command>/opt/scripts/run-chrome.sh</command></action>
+    </item>
+    <item label="Claude Code">
+      <action name="Execute"><command>/opt/scripts/run-claude.sh</command></action>
+    </item>
+    <item label="Terminal">
+      <action name="Execute"><command>/opt/scripts/run-terminal.sh</command></action>
+    </item>
+    <item label="Workspace Files">
+      <action name="Execute"><command>/opt/scripts/run-files.sh</command></action>
+    </item>
+    <separator/>
+    <item label="Restart Panel">
+      <action name="Execute"><command>/opt/scripts/restart-desktop.sh</command></action>
+    </item>
+  </menu>
+</openbox_menu>

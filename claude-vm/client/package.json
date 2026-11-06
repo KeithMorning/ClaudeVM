@@ -1,0 +1,9 @@
+{
+  "name": "claude-vm-client",
+  "version": "0.1.0",
+  "description": "本地程序：拉起本地虚拟环境容器（桌面+Chrome+Claude Code+noVNC 流服务），配置白名单代理与工作区",
+  "bin": { "claude-vm": "index.js" },
+  "scripts": { "start": "node index.js", "build:vm": "docker build -t claude-vm:latest ../vm" },
+  "dependencies": { "express": "^4.19.2" },
+  "engines": { "node": ">=18" }
+}

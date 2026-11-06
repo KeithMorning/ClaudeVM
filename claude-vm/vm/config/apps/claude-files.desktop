@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Workspace Files
+Comment=Browse the shared workspace folder
+Exec=/opt/scripts/run-files.sh
+Icon=/opt/icons/folder.png
+Terminal=false
+StartupNotify=false
+Categories=System;FileManager;

@@ -1,6 +1,6 @@
 {
   "name": "claude-desktop",
-  "version": "1.0.31",
+  "version": "1.0.32",
   "description": "Claude VM 桌面版：一键启动隔离的 Linux 虚拟环境（Chrome + Claude Code + 代理接入 + 串流桌面）",
   "main": "app/main.js",
   "author": "claude-vm",
@@ -10,12 +10,14 @@
     "prestart": "npm run sync-scripts",
     "predist:win": "npm run sync-scripts",
     "predist:portable": "npm run sync-scripts",
+    "predist:mac": "npm run sync-scripts",
     "predist:all": "npm run sync-scripts",
     "start": "electron .",
     "test": "node --test \"../tests/**/*.test.js\"",
     "test:fast": "node --test \"../tests/unit/*.test.js\" \"../tests/static/*.test.js\"",
     "dist:win": "electron-builder --win nsis",
     "dist:portable": "electron-builder --win portable",
+    "dist:mac": "electron-builder --mac dmg",
     "dist:all": "electron-builder -mwl"
   },
   "devDependencies": {

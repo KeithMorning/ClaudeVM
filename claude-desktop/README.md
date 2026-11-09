@@ -326,6 +326,22 @@ openbox 发 `--reconfigure`，不必重启就生效。配置指纹另加 `RUNTIM
 **即时缓解（不用装包）**：正卡在这个报错时，在 Windows 终端执行 `wsl --shutdown`
 重建 WSL 网络命名空间，再回程序点「启动」即可。装 1.0.30 之后「停止 → 启动」不再复发。
 
+## macOS 支持（1.0.32）
+
+macOS 上没有 WSL，改走 **Linux 容器后端**（Docker Desktop 或 OrbStack，自动探测）：
+
+- 同一个 `rootfs.tar.gz` 直接 `docker import` 成镜像，首次启动约 1~2 分钟；
+- **Apple Silicon 需要 Rosetta**：Docker Desktop / OrbStack 设置里启用
+  「Use Rosetta for x86_64/amd64 emulation」（镜像是 amd64 的，不启用起不来）；
+- 显示模式**只有串流桌面**（macOS 没有 WSLg），设置里对应选项已隐藏；
+- 工作区只能放在 `/Users` 或 `/Volumes` 下（容器只共享这两个前缀），否则启动时会明确报错；
+- 代理探测会自动试 `host.docker.internal` / `host.orb.internal`（容器内访问宿主的别名），
+  你照常填 `127.0.0.1:7897` 就行，**不需要**开 Allow LAN；
+- 构建：`npm run dist:mac`（必须在 macOS 上执行）。未签名的 dmg 首次打开需
+  右键 →「打开」绕过 Gatekeeper。
+
+前置条件：Docker Desktop / OrbStack 已安装并启动（`brew install --cask orbstack`）。
+
 ## 首次运行
 
 1. 程序启动先做 WSL2/WSLg 预检；不可用会直接列出修复步骤。

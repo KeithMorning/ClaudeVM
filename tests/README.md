@@ -50,6 +50,7 @@ cd claude-desktop && npm test
 | 坑 14：Chrome 陈旧锁 | `SingletonLock` 指向不存在的主机 | static（entrypoint 与 chrome-login.sh 都要清锁） |
 | 坑 15：停止→启动死锁 | 熔断删默认路由，网关发现只认默认路由 | `unit/route.test.js` + `unit/upstream.test.js`（熔断态仍解析成功）＋ static（stopRuntime 中 unlock 先于 kill）＋ `integration/wsl.test.js`（lock→unlock 往返实测） |
 | 坑 16：中文输入 | 终端一个字打不进、Chrome 候选窗豆腐块 | `static/consistency.test.js`（启动器用 lxterminal 且无 `-xrm`；rime-setup 装 ibus-gtk3；entrypoint 部署配色；自检查 `im-ibus.so`） |
+| 平台抽象（1.0.32） | macOS 移植：平台差异散进业务逻辑会失控 | `unit/backend.test.js`（pickBackendId / 工作区映射 / docker create 参数，直接 require `app/lib/vm-backend.js`）＋ static（main.js 不得直接 spawn wsl.exe、NOVNC_BIND=0.0.0.0、dist:mac 存在） |
 
 ## 单元测试怎么加载 main.js（loader）
 

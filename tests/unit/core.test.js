@@ -63,8 +63,16 @@ test('mergeCfg: 保存值覆盖默认值，workspace 被规范化', () => {
   assert.strictEqual(cfg.workspace, 'C:\\w s\\p');
   // 未提供的字段取默认
   assert.strictEqual(cfg.tz, 'Asia/Taipei');
-  assert.strictEqual(cfg.displayMode, 'wslg');
+  // macOS 没有 WSLg，mergeCfg 会强制 desktop；其它平台保留默认 wslg
+  assert.strictEqual(cfg.displayMode, process.platform === 'darwin' ? 'desktop' : 'wslg');
   assert.strictEqual(cfg.netGuard, 'strict');
+});
+
+test('normalizeWinPath: POSIX 路径只收敛斜杠，不做反斜杠替换', () => {
+  const { normalizeWinPath } = loadSegment('normalizeWinPath');
+  assert.strictEqual(normalizeWinPath('/Users/keith//claude-workspace'), '/Users/keith/claude-workspace');
+  assert.strictEqual(normalizeWinPath('/Users/keith/ws/'), '/Users/keith/ws');
+  assert.strictEqual(normalizeWinPath('/'), '/');
 });
 
 test('toWslPath: Windows 盘符路径转 /mnt/<小写盘符>/…', () => {

@@ -8,7 +8,7 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
-const { ROOT, MAIN_SRC, readRel, loadSegment } = require('../loader');
+const { ROOT, MAIN_SRC, readRel, existsRel, loadSegment } = require('../loader');
 
 const VM_SCRIPTS = path.join(ROOT, 'claude-vm', 'vm', 'scripts');
 const RUNTIME_SCRIPTS = path.join(ROOT, 'claude-desktop', 'runtime', 'scripts');
@@ -219,4 +219,27 @@ test('坑 16：自检先查 GTK im module，缺了要给出明确提示', () => 
   const src = readRel('claude-vm/vm/scripts/check-env.sh');
   assert.ok(src.includes('im-ibus.so'), '自检应检查 GTK 原生模块');
   assert.ok(src.includes('缺 GTK 输入模块'), '缺失时提示要具体，不能只说 XIM 未注册');
+});
+
+// ---------- 平台抽象（1.0.32 起支持 macOS） ----------
+
+test('平台抽象：差异收敛在 vm-backend，main.js 不直接 spawn wsl.exe', () => {
+  assert.ok(MAIN_SRC.includes("require('./lib/vm-backend')"), 'main.js 应依赖 vm-backend');
+  assert.ok(existsRel('claude-desktop/app/lib/vm-backend.js'), 'vm-backend.js 必须存在');
+  assert.doesNotMatch(MAIN_SRC, /spawn\('wsl\.exe'/, 'spawn 应走 backend.spawnEntry');
+  const vb = readRel('claude-desktop/app/lib/vm-backend.js');
+  for (const k of ['pickBackendId', 'createContainerBackend', 'createWslBackend']) {
+    assert.ok(vb.includes(k), `vm-backend.js 缺少 ${k}`);
+  }
+});
+
+test('平台抽象：容器模式 noVNC 发布到 0.0.0.0（websockify 绑回环会连不上）', () => {
+  const vb = readRel('claude-desktop/app/lib/vm-backend.js');
+  assert.match(vb, /NOVNC_BIND: '0\.0\.0\.0'/);
+  assert.match(ep(), /\$\{NOVNC_BIND:-127\.0\.0\.1\}/, 'entrypoint 必须尊重 NOVNC_BIND');
+});
+
+test('工程基本面：dist:mac 构建入口存在（macOS 支持）', () => {
+  const pkg = JSON.parse(readRel('claude-desktop/package.json'));
+  assert.ok(pkg.scripts['dist:mac'], '必须有 dist:mac');
 });

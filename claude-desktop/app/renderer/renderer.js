@@ -62,6 +62,13 @@ function fill(c) {
   $('displayMode').value = c.displayMode === 'desktop' ? 'desktop' : 'wslg';
   $('netGuard').value = c.netGuard === 'off' ? 'off' : 'strict';
   $('inputMethod').value = c.inputMethod === 'rime' ? 'rime' : 'off';
+  // macOS 没有 WSLg：隐藏选项并锁定为串流桌面
+  if (c._platform === 'darwin') {
+    const sel = $('displayMode');
+    [...sel.options].forEach((o) => { if (o.value !== 'desktop') o.remove(); });
+    sel.value = 'desktop';
+    sel.disabled = true;
+  }
   syncProxyMode();
   syncDisplayMode();
 }

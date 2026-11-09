@@ -6,6 +6,9 @@ const path = require('path');
 const fs = require('fs');
 const net = require('net');
 const { execFile, spawn } = require('child_process');
+// 平台后端：Windows → WSL2，macOS/Linux → 容器（Docker/OrbStack）。
+// 平台差异全部收敛在 lib/vm-backend.js，本文件不再直接碰 wsl.exe 之外的平台 API。
+const backend = require('./lib/vm-backend');
 
 const DISTRO = 'claude-vm';
 const NOVNC_PORT = 6080;
@@ -120,13 +123,18 @@ function mergeCfg(saved) {
   const c = { ...defaultConfig(), ...saved };
   // 读出来就收敛成规范路径：界面里显示的、以及后续算指纹用的都是同一个值
   if (c.workspace) c.workspace = normalizeWinPath(c.workspace);
+  // macOS 没有 WSLg，只有串流桌面一条路（选项在渲染层也会隐藏）
+  if (process.platform === 'darwin') c.displayMode = 'desktop';
   return c;
 }
 // 路径里混进多余的斜杠（粘贴、转义、手打都可能）会让指纹每次都不一样，
-// 进而被当成「配置已变更」反复重建虚拟机。写盘前统一收敛成 Windows 规范形式。
+// 进而被当成「配置已变更」反复重建虚拟机。写盘前统一收敛成规范形式。
 function normalizeWinPath(p) {
   const s = String(p || '').trim();
   if (!s) return s;
+  // POSIX 路径（macOS / Linux 工作区）：只收敛重复斜杠，
+  // 不能做下面的反斜杠替换 —— /Users/x 会被改成 \Users\x，指纹和挂载全错。
+  if (s.startsWith('/')) return s.replace(/\/{2,}/g, '/').replace(/^(.+)\/$/, '$1');
   const unified = s.replace(/\//g, '\\');
   // UNC（\\server\share）要保留开头两个反斜杠
   if (/^\\\\./.test(unified)) return '\\\\' + unified.replace(/^\\+/, '');
@@ -197,14 +205,15 @@ function assetsDir() {
 async function syncScripts() {
   const dir = scriptsDir();
   if (!dir) return { ok: false, reason: 'scripts-missing' };
-  const wslDir = toWslPath(dir);
+  // guest 侧路径由后端给：WSL 是 /mnt/c/...，容器是只读挂载点 /mnt/sync-scripts
+  const wslDir = backend.guestScriptsPath(dir);
   const asDir = assetsDir();
   // 资源拷到 /opt/assets，由 entrypoint 覆盖到 /usr/share/novnc 等最终位置
   // 末尾不要带分号：下面用 '; ' 拼接，多一个分号会变成 ';;' —— bash 语法错误，
   // 整条同步命令直接失败（1.0.19 起每次启动报「脚本同步失败」就是这个），
   // 而且脚本一个都不会更新。踩过一次，别再加回去。
   const assetsCmd = asDir
-    ? `mkdir -p /opt/assets && cp -rf '${toWslPath(asDir)}/.' /opt/assets/ 2>/dev/null`
+    ? `mkdir -p /opt/assets && cp -rf '${backend.guestAssetsPath(asDir)}/.' /opt/assets/ 2>/dev/null`
     : '';
   // openbox 配置热更新：不必等 entrypoint 重启，点一次「启动」就让标题栏按钮修复生效。
   // 1.0.27 的教训：只把新配置放进 /opt/assets，可 VM 里跑的还是旧版 entrypoint
@@ -231,7 +240,7 @@ async function syncScripts() {
     openboxHotfix,
     'echo SYNCED',
   ].filter(Boolean).join('; ');
-  const r = await runWsl(['-d', DISTRO, '-u', 'root', '--', 'bash', '-c', sh], { timeout: 30000 });
+  const r = await runWsl(['bash', '-c', sh], { timeout: 30000 });
   return { ok: /SYNCED/.test(r.stdout) };
 }
 
@@ -245,44 +254,17 @@ function toWslPath(p) {
 }
 
 // ---------- WSL 调用 ----------
+// 名字保留 runWsl（测试切片按此名注入桩），语义已是「在 guest 内执行命令」：
+// args 为 guest 内 argv（如 ['bash', '-c', sh]），由后端翻译成 wsl.exe / docker exec。
+// 历史调用形如 ['bash', '-c', sh]，1.0.32 起
+// 只传 guest 部分，平台前缀由 lib/vm-backend.js 拼。
 function runWsl(args, opts = {}) {
-  return new Promise((resolve) => {
-    execFile('wsl.exe', args, { maxBuffer: 1024 * 1024 * 32, windowsHide: true, ...opts },
-      (err, stdout, stderr) => resolve({
-        ok: !err,
-        code: err && (err.code || (err.status != null ? err.status : '')),
-        stdout: stdout || '',
-        stderr: stderr || '',
-      }));
-  });
+  return backend.runGuest(args, opts);
 }
 
-const WSL_HELP = [
-  '本程序需要 WSL2（Windows 自带的轻量 Linux 运行时），当前系统上不可用。',
-  '',
-  '修复步骤（任选其一）：',
-  '  1) 以管理员身份打开 PowerShell，执行：wsl --install',
-  '     完成后重启电脑，再回到本程序点「启动虚拟环境」。',
-  '  2) 若已装过 WSL：执行 wsl --update 更新内核；',
-  '     并在「启用或关闭 Windows 功能」里勾选',
-  '     「适用于 Linux 的 Windows 子系统」和「虚拟机平台」。',
-  '  3) 若提示虚拟化未开启：进 BIOS 打开 Intel VT-x / AMD-V（SVM）。',
-].join('\n');
-
-// WSL 可用性预检：区分「根本没装」与「装了但跑不起来」
+// WSL / 容器运行时可用性预检：区分「根本没装」与「装了但跑不起来」
 async function probeWsl() {
-  const st = await runWsl(['--status']);
-  const blob = (st.stdout + st.stderr);
-  if (!st.ok && String(st.code) === 'ENOENT') {
-    return { ok: false, error: WSL_HELP };
-  }
-  // --status 在很旧的版本上没有，用 -l -q 兜底判断可用性
-  const l = await runWsl(['-l', '-q']);
-  if (!l.ok) {
-    const detail = (l.stderr || l.stdout || blob).replace(/\0/g, '').trim();
-    return { ok: false, error: `${WSL_HELP}\n\n（WSL 返回：${detail.slice(0, 300)}）` };
-  }
-  return { ok: true };
+  return backend.probe();
 }
 
 
@@ -291,10 +273,7 @@ function cleanWslList(s) {
 }
 
 async function distroExists() {
-  try {
-    const r = await runWsl(['-l', '-q']);
-    return cleanWslList(r.stdout).some(n => n.toLowerCase() === DISTRO.toLowerCase());
-  } catch { return false; }
+  return backend.imageExists();
 }
 
 function waitPort(port, timeoutMs, host = '127.0.0.1') {
@@ -417,7 +396,7 @@ async function wslProbeHosts(hosts, port) {
   const js = PROBE_JS.replace('__HOSTS__', JSON.stringify(hosts)).replace('__PORT__', String(port));
   const b64 = Buffer.from(js, 'utf8').toString('base64');
   const sh = `echo ${b64} | base64 -d > /tmp/proxy-probe.js && node /tmp/proxy-probe.js`;
-  const r = await runWsl(['-d', DISTRO, '-u', 'root', '--', 'bash', '-c', sh], { timeout: 30000 });
+  const r = await runWsl(['bash', '-c', sh], { timeout: 30000 });
   const m = /OK:(.*)/.exec(r.stdout || '');
   if (!m) {
     // 探测脚本没跑起来（node 缺失 / 发行版没起来）：把真实错误带出去，
@@ -438,6 +417,9 @@ async function wslProbeHosts(hosts, port) {
 // 只采用真正能连上代理端口的那个地址，猜错也不会把流量送错地方。
 const ROUTE_MARK = '__NET_ROUTE__';
 const PROXY_MARK = '__LOCAL_PROXY__';
+// 容器后端（Docker Desktop / OrbStack）给宿主提供的 DNS 别名，路由表里推不出来；
+// 无条件进候选，靠真实 TCP 探测把关（WSL 下这两个名字解析不了，自然被过滤）。
+const HOST_ALIAS_CANDIDATES = ['host.docker.internal', 'host.orb.internal'];
 
 function hexIpLE(hex) {
   const n = parseInt(hex, 16);                     // /proc/net/route 是小端序
@@ -472,7 +454,7 @@ function parseRouteTable(routeTxt) {
 async function wslHostCandidates() {
   // 一次 wsl 调用同时取路由表与上次成功写入的宿主代理地址，省一次冷启动。
   const sh = `echo ${ROUTE_MARK}; cat /proc/net/route 2>/dev/null; echo ${PROXY_MARK}; cat /opt/config/local-proxy 2>/dev/null`;
-  const r = await runWsl(['-d', DISTRO, '-u', 'root', '--', 'bash', '-c', sh], { timeout: 20000 });
+  const r = await runWsl(['bash', '-c', sh], { timeout: 20000 });
   const out = String(r.stdout || '');
   if (!out.includes(ROUTE_MARK)) {
     return { gw: null, subnets: [], cached: null, routeLocked: true,
@@ -508,7 +490,7 @@ async function resolveUpstream(cfgProxy, progress) {
     log('start', '容器内无默认路由（网络熔断锁定）；网关改由直连网段 / 上次成功地址推断');
   }
   const cands = [];
-  for (const h of [info.gw, info.cached, ...info.subnets]) {
+  for (const h of [info.gw, info.cached, ...info.subnets, ...HOST_ALIAS_CANDIDATES]) {
     if (h && !isLoopbackHost(h) && !cands.includes(h)) cands.push(h);
   }
   // 端口与容器内 router 相同的话，127.0.0.1 会命中 router 自己造成假阳性，跳过
@@ -525,7 +507,7 @@ async function resolveUpstream(cfgProxy, progress) {
     u.hostname = host;
     return {
       url: stripSlash(u.href),
-      note: `代理已映射为 Windows 宿主地址 ${host}:${p.port}（WSL2 NAT 下容器里的 127.0.0.1 指向容器自身，不是 Windows）。`,
+      note: `代理已映射为宿主地址 ${host}:${p.port}（虚拟环境里的 127.0.0.1 指向环境自身，不是宿主机）。`,
     };
   }
   // 镜像网络模式：容器内 127.0.0.1 直接就是宿主
@@ -551,7 +533,7 @@ async function resolveUpstream(cfgProxy, progress) {
     `  · Windows 侧 127.0.0.1:${p.port} 监听正常`,
     info.routeLocked
       ? '  · 容器内没有默认路由（网络熔断锁定了路由表，属预期状态，不是发行版没启动）'
-      : `  · 已识别 WSL 网关 ${info.gw}`,
+      : `  · 已识别宿主网关 ${info.gw}`,
     `  · 容器内尝试过 ${cands.join(' / ')}，均不可达`,
     '',
     '最常见原因：代理软件只接受本机访问。请打开它的',
@@ -570,56 +552,19 @@ async function resolveUpstream(cfgProxy, progress) {
 
 // ---------- 运行时操作 ----------
 async function ensureImported(onProgress) {
-  if (await distroExists()) return { ok: true, imported: false };
-
-  const probe = await probeWsl();
-  if (!probe.ok) return { ok: false, error: probe.error };
-
-  const rf = rootfsPath();
-  if (!fs.existsSync(rf)) {
-    return { ok: false, error: `找不到运行时镜像：${rf}\n（打包版应内置 resources/rootfs.tar.gz）` };
-  }
-  fs.mkdirSync(dataDir(), { recursive: true });
-  onProgress && onProgress('首次运行：正在导入 Linux 运行时（约 1~2 分钟，请勿关闭窗口）…');
-  const r = await runWsl(['--import', DISTRO, dataDir(), rf, '--version', '2']);
-  if (!r.ok) {
-    const detail = (r.stderr || r.stdout || '').replace(/\0/g, '').trim();
-    return {
-      ok: false,
-      error: [
-        '导入 Linux 运行时失败。',
-        `目标目录：${dataDir()}`,
-        '',
-        '常见原因：',
-        '  · 磁盘空间不足（需要约 3 GB）',
-        '  · 该目录被杀软/安全软件拦截',
-        '  · WSL2 尚未启用（见下方提示）',
-        '',
-        `原始错误：${detail.slice(0, 400)}`,
-        '',
-        WSL_HELP,
-      ].join('\n'),
-    };
-  }
-  return { ok: true, imported: true };
+  // 后端负责全部差异：WSL 走 wsl --import，容器走 docker import + 实例创建/拉起
+  return backend.ensureImage(rootfsPath(), {
+    dataDir: dataDir(),
+    scriptsDir: scriptsDir(),
+    assetsDir: assetsDir(),
+    novncPort: NOVNC_PORT,
+    onProgress,
+  });
 }
 
-// 看某个端口在 Windows 上被谁占着（netstat + tasklist 都绕不开，但不必依赖第三方）
+// 看某个端口在宿主上被谁占着（Windows: netstat+tasklist，macOS/Linux: lsof）
 function winPortOwner(port) {
-  return new Promise((resolve) => {
-    execFile('netstat', ['-ano'], { windowsHide: true, maxBuffer: 1024 * 1024 * 8 }, (err, out) => {
-      if (err) return resolve(null);
-      const re = new RegExp(`:${port}\\s+\\S+\\s+LISTENING\\s+(\\d+)`, 'i');
-      const line = String(out).split(/\r?\n/).find((l) => re.test(l));
-      if (!line) return resolve(null);
-      const pid = re.exec(line)[1];
-      execFile('tasklist', ['/FI', `PID eq ${pid}`, '/FO', 'CSV', '/NH'], { windowsHide: true },
-        (e2, o2) => {
-          const name = (String(o2 || '').match(/^"([^"]+)"/) || [])[1] || '未知进程';
-          resolve({ pid, name, line: line.trim() });
-        });
-    });
-  });
+  return backend.hostPortOwner(port);
 }
 
 // 启动前确认端口没被别人占：占着的话 noVNC 永远起不来，最后只会报「90 秒未就绪」
@@ -627,7 +572,7 @@ async function portConflict(port) {
   const busy = await waitPort(port, 300);
   if (!busy) return null;
   // 可能是我们上一轮留下的发行版还在跑（应用重启但环境没停），那不算冲突
-  const probe = await runWsl(['-d', DISTRO, '-u', 'root', '--', 'bash', '-c',
+  const probe = await runWsl(['bash', '-c',
     'pgrep -f websockify >/dev/null 2>&1 && echo ours'], { timeout: 15000 });
   if ((probe.stdout || '').includes('ours')) return null;
   return await winPortOwner(port);
@@ -639,7 +584,7 @@ async function portConflict(port) {
 //   wslg    —— 不监听任何端口，改看 entrypoint 写的就绪标记 + 会话常驻进程
 // 标记内容是模式名，切换模式时会被判为「不活着」，从而触发重建而不是错误接管。
 async function runtimeAlive(displayMode = 'desktop') {
-  const r = await runWsl(['-d', DISTRO, '-u', 'root', '--', 'bash', '-c',
+  const r = await runWsl(['bash', '-c',
     'cat /run/claude-vm/ready 2>/dev/null'], { timeout: 15000 });
   const ready = String(r.stdout || '').trim().split('\n').filter(Boolean).pop() || '';
   if (displayMode === 'wslg') {
@@ -652,7 +597,7 @@ async function runtimeAlive(displayMode = 'desktop') {
   // 直接 return —— 既不同步新脚本，也不重建会话。1.0.27 的 openbox 关闭按钮修复
   // 就是这样一直没进虚拟机：用户装了新版，点的仍是旧配置画的 ✕。
   // 所以这里必须真的查三个常驻进程 + 串流端口。
-  const p = await runWsl(['-d', DISTRO, '-u', 'root', '--', 'bash', '-c',
+  const p = await runWsl(['bash', '-c',
     "pgrep -x Xtigervnc >/dev/null 2>&1 && pgrep -x openbox >/dev/null 2>&1 && ps -eo args= | grep -q '[w]ebsockify' && echo RUNNING || echo DEAD"],
     { timeout: 15000 });
   const procsUp = /RUNNING/.test(String(p.stdout || ''));
@@ -694,7 +639,7 @@ const readLastFingerprint = () => {
 async function waitReadyMarker(displayMode, timeoutMs) {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
-    const r = await runWsl(['-d', DISTRO, '-u', 'root', '--', 'bash', '-c',
+    const r = await runWsl(['bash', '-c',
       'cat /run/claude-vm/ready 2>/dev/null'], { timeout: 12000 });
     const v = String(r.stdout || '').trim().split('\n').filter(Boolean).pop() || '';
     if (v === displayMode) return true;
@@ -798,31 +743,43 @@ async function startRuntime(cfg, onProgress) {
 
   // 先抹掉旧就绪标记：否则「同模式重启」时 waitReadyMarker 会被上一轮的标记
   // 立刻满足，把还没起来的环境当成已经就绪。
-  await runWsl(['-d', DISTRO, '-u', 'root', '--', 'bash', '-c',
+  await runWsl(['bash', '-c',
     'rm -f /run/claude-vm/ready'], { timeout: 12000 });
 
   onProgress && onProgress('启动虚拟环境…');
   const proxyMode = cfg.proxyMode === 'whitelist' ? 'whitelist' : 'all';
-  const args = [
-    '-d', DISTRO, '-u', 'root', '--', 'env',
-    `TZ=${cfg.tz || 'America/New_York'}`,
-    `LANG=${cfg.lang || 'en_US.UTF-8'}`,
-    `LC_ALL=${cfg.lang || 'en_US.UTF-8'}`,
-    `NOVNC_PORT=${NOVNC_PORT}`,
-    `DISPLAY_MODE=${displayMode}`,
-    `UPSTREAM_PROXY=${upstream}`,
-    `PROXY_MODE=${proxyMode}`,
-    `PROXY_WHITELIST=${cfg.whitelist || DEFAULT_WHITELIST}`,
-    `NET_GUARD=${cfg.netGuard === 'off' ? 'off' : 'strict'}`,
-    `NET_GUARD_STRICT_REGION=${cfg.netGuardStrictRegion === false ? '0' : '1'}`,
-    `INPUT_METHOD=${cfg.inputMethod === 'rime' ? 'rime' : 'off'}`,
-    `WORKSPACE=${toWslPath(ws)}`,
-    `/opt/scripts/entrypoint.sh`,
-  ];
+  // guest 侧工作区路径由后端换算：WSL 是 /mnt/c/...，容器是 /mnt/host-users/...
+  const guestWs = backend.guestWorkspacePath(ws);
+  if (!guestWs) {
+    return {
+      ok: false,
+      error: [
+        `工作区路径无法映射进虚拟环境：${ws}`,
+        '',
+        '容器后端只共享 /Users 与 /Volumes 下的目录（Docker Desktop / OrbStack 默认共享范围）。',
+        '请把工作区换到你的用户目录（如 ~/claude-workspace）下再试。',
+      ].join('\n'),
+    };
+  }
+  const env = {
+    TZ: cfg.tz || 'America/New_York',
+    LANG: cfg.lang || 'en_US.UTF-8',
+    LC_ALL: cfg.lang || 'en_US.UTF-8',
+    NOVNC_PORT: String(NOVNC_PORT),
+    DISPLAY_MODE: displayMode,
+    UPSTREAM_PROXY: upstream,
+    PROXY_MODE: proxyMode,
+    PROXY_WHITELIST: cfg.whitelist || DEFAULT_WHITELIST,
+    NET_GUARD: cfg.netGuard === 'off' ? 'off' : 'strict',
+    NET_GUARD_STRICT_REGION: cfg.netGuardStrictRegion === false ? '0' : '1',
+    INPUT_METHOD: cfg.inputMethod === 'rime' ? 'rime' : 'off',
+    WORKSPACE: guestWs,
+  };
 
   if (runtimeProc) { try { runtimeProc.kill(); } catch {} }
-  log('start', `spawn: ${args.filter((a) => !String(a).startsWith('UPSTREAM_PROXY=')).join(' ')}`);
-  const proc = spawn('wsl.exe', args, { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+  log('start', `spawn: ${backend.id} ${displayMode} ` +
+    Object.entries(env).filter(([k]) => k !== 'UPSTREAM_PROXY').map(([k, v]) => `${k}=${v}`).join(' '));
+  const proc = backend.spawnEntry(env);
   runtimeProc = proc;
   // 记下「这台 VM 是按这份配置起的」，供下次启动判断能否直接接管
   try { fs.writeFileSync(lastStartPath(), fp); } catch {}
@@ -940,7 +897,7 @@ const shellQuote = (s) => `'${String(s).replace(/'/g, `'\\''`)}'`;
 // 界面每几秒轮询一次，代理断开/恢复能立刻反映出来。
 async function readNetGuard() {
   try {
-    const r = await runWsl(['-d', DISTRO, '-u', 'root', '--', 'bash', '-c',
+    const r = await runWsl(['bash', '-c',
       'cat /run/claude-vm/net-guard.state 2>/dev/null'], { timeout: 12000 });
     const out = {};
     for (const line of String(r.stdout || '').split('\n')) {
@@ -956,7 +913,7 @@ async function readNetGuard() {
 //   · 白名单模式 → http://127.0.0.1:7890（本地 router）
 // 读文件而不是自己推算，是为了跟运行环境所见完全一致；读不到再用 fallback。
 async function containerProxyEndpoint(fallback) {
-  const r = await runWsl(['-d', DISTRO, '-u', 'root', '--', 'bash', '-c',
+  const r = await runWsl(['bash', '-c',
     'cat /opt/config/local-proxy 2>/dev/null'], { timeout: 15000 });
   const v = String(r.stdout || '').trim().split('\n').filter(Boolean).pop() || '';
   return /^[a-z0-9]+:\/\//i.test(v) ? v : fallback;
@@ -969,7 +926,7 @@ async function verifyProxyChain(ep) {
   const p = shellQuote(ep);
   const one = async (url, to) => {
     const sh = `curl -s -o /dev/null -w "%{http_code}" --max-time ${to} -x ${p} ${url}`;
-    const r = await runWsl(['-d', DISTRO, '-u', 'root', '--', 'bash', '-c', sh], { timeout: (to + 8) * 1000 });
+    const r = await runWsl(['bash', '-c', sh], { timeout: (to + 8) * 1000 });
     return String(r.stdout || '').trim();
   };
   const code = await one('https://api.anthropic.com', 12);
@@ -985,7 +942,7 @@ async function verifyExitViaRouter(ep) {
     `| sed -n 's/.*"ip": *"\\([^"]*\\)".*/ip=\\1/p;` +
     `s/.*"city": *"\\([^"]*\\)".*/city=\\1/p;` +
     `s/.*"org": *"\\([^"]*\\)".*/org=\\1/p'`;
-  const r = await runWsl(['-d', DISTRO, '-u', 'root', '--', 'bash', '-c', sh], { timeout: 20000 });
+  const r = await runWsl(['bash', '-c', sh], { timeout: 20000 });
   const out = {};
   for (const line of String(r.stdout || '').split('\n')) {
     const i = line.indexOf('=');
@@ -1004,7 +961,7 @@ async function stopRuntime() {
   // 被删的默认路由会残留到下次启动。fail-closed 的「不 unlock」
   // 只针对守卫意外死亡，用户点停止时环境本来就要下线，解锁是安全的。
   try {
-    const u = await runWsl(['-d', DISTRO, '-u', 'root', '--', 'python3',
+    const u = await runWsl(['python3',
       '/opt/scripts/net-guard.py', 'unlock'], { timeout: 12000 });
     log('stop', /"ok":\s*true/.test(u.stdout || '')
       ? '已还原默认路由（熔断解锁）'
@@ -1013,11 +970,11 @@ async function stopRuntime() {
     log('stop', `熔断解锁跳过：${e && e.message}`);
   }
   try { if (runtimeProc) { runtimeProc.kill(); runtimeProc = null; } } catch {}
-  // 先抹掉就绪标记，再终止发行版：否则 --terminate 之后标记还在，
+  // 先抹掉就绪标记，再终止实例：否则停掉之后标记还在，
   // 下次启动的 runtimeAlive() 会把已经停掉的环境误判成「还活着」。
-  await runWsl(['-d', DISTRO, '-u', 'root', '--', 'bash', '-c',
+  await runWsl(['bash', '-c',
     'rm -f /run/claude-vm/ready'], { timeout: 12000 });
-  await runWsl(['--terminate', DISTRO]);
+  await backend.stopAll();
   // 环境已经没了，指纹作废 —— 下次必须是真正的重建
   try { fs.unlinkSync(lastStartPath()); } catch {}
   setTimeout(() => { stopping = false; }, 3000);
@@ -1038,7 +995,7 @@ async function checkEnv() {
   // 把当前显示模式显式传进去，它才知道该检查 6080/websockify 还是 WSLg 会话。
   const dm = loadConfig().displayMode === 'desktop' ? 'desktop' : 'wslg';
   const run = (extra) => runWsl(
-    ['-d', DISTRO, '-u', 'root', '--', 'env', `DISPLAY_MODE=${dm}`,
+    ['env', `DISPLAY_MODE=${dm}`,
       '/opt/scripts/check-env.sh', ...extra],
     { timeout: 120000 },
   );
@@ -1077,21 +1034,25 @@ async function checkEnv() {
   return { ok: false, out: text, error: '自检脚本版本较旧，暂时以原始输出显示。重新启动程序会自动同步最新脚本。' };
 }
 
-// ---------- WSLg 窗口（只在 wslg 模式下有意义）----------
-// 用 nohup + & 让窗口进程脱离这一次 exec 会话；整个 WSL 会话由 entrypoint 的
-// sleep infinity 兜住，所以关掉窗口不会让发行版变 Stopped，随时可以再开一个。
+// ---------- WSLg 窗口（wslg 模式弹原生窗口；desktop 模式开在串流桌面里）----------
+// 用 nohup + & 让窗口进程脱离这一次 exec 会话；整个会话由 entrypoint 的
+// sleep infinity 兜住，所以关掉窗口不会让实例停止，随时可以再开一个。
 async function openWslgWindow(script) {
+  const dm = loadConfig().displayMode === 'desktop' ? 'desktop' : 'wslg';
+  // desktop 模式（含 macOS）的窗口全在 :1（Xtigervnc）上；wslg 才是 :0 + Pulse
+  const disp = dm === 'desktop' ? ':1' : ':0';
+  const pulse = dm === 'desktop' ? '' : ' PULSE_SERVER=unix:/mnt/wslg/PulseServer';
   const sh = `. /opt/config/runtime-env 2>/dev/null; ` +
-    `export DISPLAY=:0 PULSE_SERVER=unix:/mnt/wslg/PulseServer; ` +
+    `export DISPLAY=${disp}${pulse}; ` +
     `nohup ${shellQuote('/opt/scripts/' + script)} >/tmp/wslg-window.log 2>&1 & echo launched`;
-  const r = await runWsl(['-d', DISTRO, '-u', 'root', '--', 'bash', '-c', sh], { timeout: 20000 });
+  const r = await runWsl(['bash', '-c', sh], { timeout: 20000 });
   return { ok: /launched/.test(r.stdout) };
 }
 
 // 沿用容器内已有的登录态；不做任何自动授权动作。
 async function authStatus() {
   const sh = `. /opt/config/runtime-env 2>/dev/null; timeout 20 claude auth status 2>/dev/null`;
-  const r = await runWsl(['-d', DISTRO, '-u', 'root', '--', 'bash', '-c', sh], { timeout: 30000 });
+  const r = await runWsl(['bash', '-c', sh], { timeout: 30000 });
   const raw = String(r.stdout || '').trim();
   let loggedIn = false, method = 'none';
   try {
@@ -1100,7 +1061,7 @@ async function authStatus() {
     method = d.authMethod || 'none';
   } catch {
     // 老版本 claude 没有 auth status：退回到「有没有凭据文件」的粗判
-    const f = await runWsl(['-d', DISTRO, '-u', 'root', '--', 'bash', '-c',
+    const f = await runWsl(['bash', '-c',
       'test -s /root/.claude/.credentials.json && echo yes'], { timeout: 15000 });
     loggedIn = /yes/.test(f.stdout || '');
     if (loggedIn) method = 'credential-file';
@@ -1117,7 +1078,8 @@ ipcMain.handle('config:get', () => {
     saved.whitelist = DEFAULT_WHITELIST;
     try { saveConfig({ ...defaultConfig(), ...saved }); } catch {}
   }
-  return { ...mergeCfg(saved), _firstRun: firstRun };
+  // _platform 供渲染层隐藏不适用的选项（macOS 无 WSLg）
+  return { ...mergeCfg(saved), _firstRun: firstRun, _platform: process.platform };
 });
 ipcMain.handle('config:save', (_e, cfg) => { saveConfig(cfg); return { ok: true }; });
 ipcMain.handle('proxy:detect', async () => detectProxy());
@@ -1171,15 +1133,14 @@ async function buildDiag() {
   const parts = [];
   parts.push(`Claude VM 诊断包  ${new Date().toISOString()}`);
   parts.push(`应用版本 ${app.getVersion()} ｜ Electron ${process.versions.electron} ｜ Node ${process.versions.node}`);
-  parts.push(`Windows ${process.getSystemVersion()} ｜ ${process.arch} ｜ 显示模式 ${cfg.displayMode === 'desktop' ? 'desktop(noVNC)' : 'wslg'}`);
+  parts.push(`${process.platform === 'darwin' ? 'macOS' : 'Windows'} ${process.getSystemVersion()} ｜ ${process.arch} ｜ 后端 ${backend.id} ｜ 显示模式 ${cfg.displayMode === 'desktop' ? 'desktop(noVNC)' : 'wslg'}`);
   parts.push(`数据目录 ${dataDir()}`);
   parts.push('');
   parts.push('--- 配置（口令已脱敏） ---');
   parts.push(JSON.stringify({ ...cfg, proxy: redact(cfg.proxy) }, null, 2));
   parts.push('');
-  parts.push('--- wsl -l -v ---');
-  const l = await runWsl(['-l', '-v'], { timeout: 20000 });
-  parts.push(String(l.stdout || l.stderr || '').replace(/\0/g, '').trim());
+  parts.push('--- 运行时实例 ---');
+  parts.push((await backend.diagInfo()) || '(无)');
   parts.push('');
   parts.push(`--- 端口 ${NOVNC_PORT} ---`);
   const owner = await winPortOwner(NOVNC_PORT);

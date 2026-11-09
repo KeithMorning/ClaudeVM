@@ -22,16 +22,19 @@
 ```bash
 cd claude-desktop
 npm install
-npm run dist:win
+npm run dist:win     # Windows（NSIS 安装包）
+npm run dist:mac     # macOS（dmg，必须在 Mac 上执行）
 ```
 
-产物：`claude-desktop/dist/ClaudeVM-Setup-<version>-x64.exe`。
+产物：`claude-desktop/dist/ClaudeVM-Setup-<version>-x64.exe`（Windows）。
+macOS 上未签名的 dmg 首次打开需右键 →「打开」绕过 Gatekeeper。
 
 ## 运行时镜像
 
 `rootfs.tar.gz`（约 620 MB）**不在仓库里**。它由 `claude-vm/vm/Dockerfile` 构建后导出，
-应用首次启动时导入为名为 `claude-vm` 的 WSL2 发行版。构建与导出方法见
-[`开发交接.md`](开发交接.md) 第 2 节。
+应用首次启动时导入为运行时：Windows 上是名为 `claude-vm` 的 **WSL2 发行版**，
+macOS 上是 **Docker / OrbStack 容器**（`docker import`，Apple Silicon 靠 Rosetta 跑 amd64）。
+构建与导出方法见 [`开发交接.md`](开发交接.md) 第 2 节；macOS 细节见第 9 节。
 
 ## 安全边界
 

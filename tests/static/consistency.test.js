@@ -189,3 +189,34 @@ test('忽略策略：2.4G 构建缓存被排除，但打包图标放行', () => 
   assert.match(gi, /!claude-desktop\/build\/icon\.png/);
   assert.ok(fs.existsSync(path.join(ROOT, 'claude-desktop', 'build', 'icon.png')), 'icon.png 必须存在，否则克隆后打包失败');
 });
+
+
+test('坑 16：终端启动器走 GTK 原生输入（不再用 xterm / XIM 资源）', () => {
+  for (const f of ['run-terminal.sh', 'run-claude.sh']) {
+    const src = readRel(`claude-vm/vm/scripts/${f}`);
+    // 只检查可执行行：注释里会保留 XIM 的历史说明，不该被当成残留资源
+    const code = src.split('\n').filter((l) => !l.trim().startsWith('#')).join('\n');
+    assert.match(code, /exec lxterminal/, `${f} 应使用 lxterminal`);
+    assert.match(code, /--no-remote/, `${f} 应禁用实例复用`);
+    assert.doesNotMatch(code, /exec xterm|XTerm\*inputMethod|preeditType/, `${f} 不应残留 XIM 资源`);
+  }
+});
+
+test('坑 16：rime-setup 按需装 GTK 输入模块与终端', () => {
+  const src = readRel('claude-vm/vm/scripts/rime-setup.sh');
+  for (const k of ['ibus-gtk3', 'lxterminal', 'im-ibus.so']) {
+    assert.ok(src.includes(k), `rime-setup.sh 缺少 ${k}`);
+  }
+  assert.match(src, /--no-install-recommends/, '不能带进中文字体包（checkcc 字体名单）');
+});
+
+test('坑 16：entrypoint 部署 lxterminal 配色配置', () => {
+  const src = readRel('claude-vm/vm/scripts/entrypoint.sh');
+  assert.match(src, /cp -f \/opt\/config\/lxterminal\.conf ~\/\.config\/lxterminal\//);
+});
+
+test('坑 16：自检先查 GTK im module，缺了要给出明确提示', () => {
+  const src = readRel('claude-vm/vm/scripts/check-env.sh');
+  assert.ok(src.includes('im-ibus.so'), '自检应检查 GTK 原生模块');
+  assert.ok(src.includes('缺 GTK 输入模块'), '缺失时提示要具体，不能只说 XIM 未注册');
+});

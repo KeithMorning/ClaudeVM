@@ -21,8 +21,9 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT_DIR = os.path.join(ROOT, "_pack")
 
 # 顶层只收这些（白名单比黑名单安全，避免把临时目录打进去）
-TOP_FILES = [".gitignore", "开发交接.md", "README.md"]
-TOP_DIRS = ["build", "claude-desktop", "claude-vm", "docs"]
+TOP_FILES = [".gitignore", ".gitattributes", "README.md", "开发交接.md"]
+# tests/ 也要随源码交付：换机开发时必须能跑同一套回归测试
+TOP_DIRS = ["build", "claude-desktop", "claude-vm", "docs", "tests"]
 
 # 任何层级出现即跳过
 SKIP_DIRS = {

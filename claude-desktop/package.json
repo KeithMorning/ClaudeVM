@@ -1,6 +1,6 @@
 {
   "name": "claude-desktop",
-  "version": "1.0.30",
+  "version": "1.0.31",
   "description": "Claude VM 桌面版：一键启动隔离的 Linux 虚拟环境（Chrome + Claude Code + 代理接入 + 串流桌面）",
   "main": "app/main.js",
   "author": "claude-vm",

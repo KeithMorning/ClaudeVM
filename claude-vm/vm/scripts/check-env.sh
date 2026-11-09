@@ -546,13 +546,17 @@ _IM="${INPUT_METHOD:-off}"
 if [ "$_IM" != "rime" ]; then
   add desktop info "中文输入法" "未启用" \
     "WSLg 不转发 Windows IME 组合事件；中文可用宿主输入法打好后 Ctrl+Shift+V 粘贴。" ""
+elif ! ls /usr/lib/*/gtk-3.0/*/immodules/im-ibus.so >/dev/null 2>&1; then
+  # 1.0.31：XIM 已不是主链路，缺 GTK 原生模块才是「终端打不出中文」的真因
+  add desktop warn "中文输入法" "已启用但缺 GTK 输入模块" \
+    "没有 ibus-gtk3，lxterminal / Chrome 会降级到 XIM：终端可能一个中文都打不进，候选框不跟随光标。" \
+    "点「停止」再「启动」，rime-setup 会按需补装 ibus-gtk3（仅 80KB）。"
 elif xprop -root XIM_SERVERS 2>/dev/null | grep -q '@server=ibus'; then
-  _imeng=$(ibus engine 2>/dev/null | head -1)
-  add desktop pass "中文输入法" "IBus + Rime（XIM 已注册${_imeng:+ · $_imeng}）" \
-    "输入法跑在虚拟机内部，组合与提交都在 Linux 侧完成，不依赖 Windows IME 转发。" ""
+  add desktop pass "中文输入法" "IBus + Rime（GTK 原生 + XIM 兼容）" \
+    "输入法跑在虚拟机内部；1.0.31 起 GTK 应用经 ibus-gtk3 走 D-Bus，候选框跟随光标、Pango 正确渲染中文。" ""
 else
-  add desktop warn "中文输入法" "已启用但 XIM 未注册" \
-    "ibus-daemon 没能把 XIM server 注册到 X root，终端里可能打不出中文。" \
+  add desktop warn "中文输入法" "已启用但 IBus 服务未就绪" \
+    "ibus-daemon 没能注册到 X root，终端里可能打不出中文。" \
     "点「停止」再「启动」重建会话；反复失败查看 /tmp/ibus-daemon.log。"
 fi
 

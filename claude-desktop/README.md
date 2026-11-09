@@ -147,8 +147,16 @@ Chrome `--lang` → 现场生成 `zh_TW.UTF-8` locale（不必重建 720MB rootf
 ## 中文输入法（Rime · 万象拼音）
 
 WSLg **不转发 Windows IME 的 preedit 组合串**，但按键本身是转发的。所以把输入法放进虚拟机内部：
-按键 → WSLg X server → xterm(XIM 客户端) → IBus → Rime 组合 → 中文提交进 pty → Claude Code。
-整条链路不经过 Windows IME，这是绕开该限制的正解。
+按键 → X server → GTK3 应用（lxterminal / Chrome，经 `im-ibus.so`）→ IBus → Rime 组合 → 中文提交 → Claude Code。
+整条链路不经过 Windows IME。
+
+> **1.0.31 换了终端与输入链路。** 以前是 `xterm` + XIM：xterm 是纯 Xt 应用、只认 XIM，
+> 而 IBus 的 XIM 前端只支持 `preeditType: Root`，输入上下文常常根本建不起来 ——
+> 终端里一个中文都打不进；Chrome 勉强能收字符，但候选窗飘在左下角、字形变方块。
+> 现在换成 `lxterminal`（GTK3，593KB）+ `ibus-gtk3`（80KB）：走 GTK 原生 IM module 与
+> D-Bus，候选框跟随光标、`Ctrl+Space` 切换可靠、中文由 Pango 渲染（双宽字符宽度正确）。
+> IBus 仍带 `--xim` 只为兼容老 Xt 客户端，XIM 已不是主链路。
+> **词库、D-Bus 会话管理、守护脚本探活都不用改，总共只多约 0.7MB。**
 
 设置里的「中文输入法」选 **Rime 万象拼音** 即可，切换需「停止 → 启动」。
 
@@ -171,30 +179,33 @@ WSLg **不转发 Windows IME 的 preedit 组合串**，但按键本身是转发�
 
 其余实现要点：
 
-- **必须用 IBus，不能用 fcitx5**：fcitx5 从 5.0 起移除了 XIM（只剩 DBus/GTK/Wayland），
-  而我们的终端是 xterm、只认 XIM。实测 `fcitx4frontend` 加载后 `XIM_SERVERS` 仍不注册；
-  换 `ibus-daemon -d --xim` 立刻得到 `@server=ibus`。两者都是同一个 Rime 引擎，只是外壳不同。
-- 首次启用只需联网装约 20MB 的 IBus 组件（`ibus` / `ibus-rime` / `rime-data-stroke`）；
+- **保留 IBus，不换 fcitx5**：换 fcitx5 要把万象词库迁到 `~/.local/share/fcitx5/rime`、
+  显式起 D-Bus 会话并写进 `runtime-env`、改写守护脚本探活与自检 —— 复杂度远大于收益
+  （收益主要是候选框皮肤）。IBus + `ibus-gtk3` 已能走 GTK 原生前端，词库与守护逻辑全部不动。
+- 首次启用按需联网装约 20MB 的 IBus 组件（`ibus` / `ibus-rime` / `rime-data-stroke`）
+  外加两个小包：`ibus-gtk3`（80KB）与 `lxterminal`（593KB）；
   **词库本身离线解压**，不依赖 GitHub 可达性，之后持久保存在 WSL 发行版里，不用每次装、不用重建 rootfs。
+  `--no-install-recommends` 确保不会带进任何中文字体包。
 - `ibus-daemon` 必须挂在 entrypoint 的常驻会话下；拉起它的 `wsl.exe` 一旦退出，XIM server 会一起消失。
 - 词库来源 `amzxyz/rime_wanxiang` v18.1.8 Pure，**CC BY 4.0**（包内自带 README 与许可说明，保留署名）。
-- 自检新增「中文输入法」项，会检查 XIM 是否注册、引擎是否切到 `rime`。
+- 自检「中文输入法」项：先查 GTK3 的 `im-ibus.so` 是否在（缺它会明确提示「缺 GTK 输入模块」），
+  再查 XIM atom 与引擎状态。
 
 ### 1.0.26 实测补的两处
 
 - **繁体渲染**：补一份 `Noto Sans TC`（11.9MB，Google Fonts 同系列）。检测站名单里是
   `Noto Sans CJK TC` / `PingFang TC` / `Source Han Sans TC`，而 `Noto Sans TC` 家族名不在其中；
   `fc-scan` 与自检「字体地区特征」都已确认不扣分。SC 留给简体，TC 负责繁体笔形。
-- **xterm 必须显式 `openIm: true`**：实测此前只设 `XTerm*inputMethod: XIM` 时，xterm 372
-  并不会主动打开 XIM 输入上下文，按键全被当 ASCII 送进 pty。补上 `openIm: true` 后才会出现
-  与 IBus 协商 preedit 的日志；`preeditType` 也改用 IBus 支持的 `Root`
-  （`OverTheSpot` 会报 `input method doesn't support my preedit type`）。
+- **xterm 必须显式 `openIm: true`（历史记录，1.0.31 起已废弃）**：当时是在硬凑
+  xterm 372 的 XIM 输入上下文；`preeditType` 只能用 IBus 支持的 `Root`。
+  这些 `-xrm` 资源随 1.0.31 换成 lxterminal 一起删掉了 —— XIM 那条路本来就不稳。
 
-> **仍需真人按一次。** 自动化已能证明 XIM server 注册（`XIM_SERVERS=@server=ibus`）、
-> 引擎切到 `rime`、万象词库编译完成、xterm 建立了 XIM 输入上下文、模拟按键能送进 pty；
-> 但 `xdotool`（XTEST）注入的按键**不会触发 XIM 组合**（落盘仍是 `nihao `）——这是自动化
-> 工具与 XIM 的交互限制，既不能据此判定功能可用，也不能判定不可用。请在真实 WSLg 窗口里
-> 按 `Ctrl+Space` 敲 `nihao` 看是否出字。在此之前，宿主剪贴板桥（Ctrl+Shift+V）是可靠的中文输入兜底。
+> **仍需真人按一次。** 自动化已验证：GTK3 的 `im-ibus` 模块缓存命中、
+> `XIM_SERVERS=@server=ibus` 注册、引擎切到 `rime`、万象词库编译完成，
+> 并在隔离的 `:9` 上确认 `lxterminal` 能稳定启动且无 IM 模块加载报错。
+> 但组合输入必须真人按键才算数：请在串流终端里按 `Ctrl+Space` 敲 `nihao` 看出不出字，
+> 再在 Chrome 输入框里试一次（候选框应跟随光标、字形正常）。
+> 宿主剪贴板桥（Ctrl+Shift+V）仍是零改动的中文输入兜底。
 
 ## 网络熔断（fail-closed）
 

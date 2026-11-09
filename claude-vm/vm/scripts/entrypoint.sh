@@ -266,6 +266,11 @@ _obrc=/opt/assets/config/openbox-rc.xml
 [ -f "$_obrc" ] || _obrc=/opt/config/openbox-rc.xml
 cp -f "$_obrc" ~/.config/openbox/rc.xml
 cp -f /opt/config/tint2rc ~/.config/tint2/tint2rc
+# 3.0.1) GTK 终端配置（1.0.31）：终端从 xterm 换成 lxterminal，
+#   镜像里现成的 lxterminal.conf 与旧 xterm 深色主题是同一套色值，直接沿用。
+#   lxterminal 走 GTK3 的 im-ibus.so，中文由 Pango 渲染，双宽字符宽度算得准。
+mkdir -p ~/.config/lxterminal
+cp -f /opt/config/lxterminal.conf ~/.config/lxterminal/lxterminal.conf
 
 # 3.1.1) 串流页面：用自带的极简版，去掉 noVNC 那个悬浮控制条
 #        优先用 /opt/assets（随客户端版本更新），没有才回退镜像内自带的旧副本
@@ -444,12 +449,14 @@ fi
 #   4d 段才 export :1）。ibus-daemon 会把 XIM_SERVERS 注册到 :0 根窗口，
 #   而串流桌面的 xterm / Chrome 全在 :1 —— 表现就是「输入法切不了」。
 #   现在两种模式都在各自的 X server 上注册，且早于 runtime-env 写盘。
-# 2.45) 中文输入法（可选）：IBus + Rime 台湾注音 / 繁体
+# 2.45) 中文输入法（可选）：IBus + Rime 万象拼音
 #   WSLg 不转发 Windows IME 的 preedit 组合串，但按键本身是转发的 ——
-#   把输入法放在虚拟机内部，组合与提交都在 Linux 侧完成，再经 XIM 交给 xterm。
-#   必须用 IBus：fcitx5 5.0 起移除了 XIM，而 xterm 只认 XIM（实测 fcitx4frontend
-#   加载后 XIM_SERVERS 仍不注册；ibus-daemon --xim 能注册 @server=ibus）。
-#   daemon 必须挂在本会话下：拉起它的 wsl.exe 一旦退出，XIM server 跟着消失。
+#   所以输入法跑在虚拟机内部，组合与提交都在 Linux 侧完成。
+#   1.0.31：真正的中文入口是 **GTK3 原生 im module**（ibus-gtk3 由 rime-setup 装），
+#   lxterminal 与 Chrome 经 GTK_IM_MODULE=ibus 走 D-Bus，候选框跟随光标。
+#   这里仍带 --xim 只是兼容老 Xt 客户端，XIM 已不再是主链路，别再为它调
+#   xterm 的 openIm/preeditType —— 那条路的输入上下文根本建不稳。
+#   daemon 必须挂在本会话下：拉起它的 wsl.exe 一旦退出，输入法服务跟着消失。
 INPUT_METHOD="${INPUT_METHOD:-off}"
 if [ "$INPUT_METHOD" = "rime" ]; then
   /opt/scripts/rime-setup.sh || echo "[claude-vm] 输入法安装失败，本次不启用"

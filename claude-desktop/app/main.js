@@ -14,7 +14,7 @@ const VNC_PASS = 'claudevm';
 // 运行时脚本 / 界面资源有变更时 +1。它进配置指纹，保证升级后第一次点「启动」
 // 不会去「接管」一个由旧脚本拉起的会话 —— 那些会话里的 openbox、entrypoint、
 // 字体、代理规则全是旧版的，接管等于永远不生效。
-const RUNTIME_REV = 5;
+const RUNTIME_REV = 6;
 // 白名单：从 claude CLI 二进制里实际提取到的运行期域名
 // （code.claude.com / platform.claude.com 是 OAuth 登录与 API key 控制台，
 //   漏掉会让登录流量走直连，与 API 出口形成「两个国家」的矛盾信号）

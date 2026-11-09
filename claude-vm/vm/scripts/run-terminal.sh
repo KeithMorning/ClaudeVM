@@ -1,13 +1,13 @@
 #!/bin/sh
 # 启动器 / 任务栏：普通终端（默认落在工作区）
+#
+# 1.0.31：xterm → lxterminal（GTK3）。
+#   xterm 是纯 Xt 应用，只认 XIM；IBus 的 XIM 前端只支持 preeditType=Root，
+#   输入上下文经常根本建不起来 —— 表现是终端里一个中文都打不进去。
+#   lxterminal 走 GTK3 的 im-ibus.so（ibus-gtk3，仅 80KB）：候选框跟随光标、
+#   Ctrl+Space 切换可靠、中文由 Pango 渲染（双宽字符宽度正确，不再重叠错位）。
+#   字体与深色配色读 ~/.config/lxterminal/lxterminal.conf，由 entrypoint 部署。
 [ -f /opt/config/runtime-env ] && . /opt/config/runtime-env
-set -- -fa "Fira Code" -fs 12 -geometry 120x34 \
-  -bg "#10141b" -fg "#d7dce5" -cr "#d97757" \
-  -b 10 +sb -title "Terminal" -e /opt/scripts/session-shell.sh
-# 与 run-claude.sh 保持一致：openIm 必须显式开，preeditType 用 IBus 支持的 Root。
-if [ -n "${XMODIFIERS:-}" ]; then
-  set -- -xrm "XTerm*inputMethod: XIM" \
-         -xrm "XTerm*openIm: true" \
-         -xrm "XTerm*preeditType: Root" "$@"
-fi
-exec xterm "$@"
+
+exec lxterminal --no-remote --title="Terminal" --geometry=120x34 \
+  -e /opt/scripts/session-shell.sh

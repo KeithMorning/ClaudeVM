@@ -49,6 +49,7 @@ cd claude-desktop && npm test
 | 坑 14：XIM 错位 | ibus 注册到 WSLg 的 `:0`，串流窗口切不了输入法 | static（输入法段索引必须 > `export DISPLAY=:1`） |
 | 坑 14：Chrome 陈旧锁 | `SingletonLock` 指向不存在的主机 | static（entrypoint 与 chrome-login.sh 都要清锁） |
 | 坑 15：停止→启动死锁 | 熔断删默认路由，网关发现只认默认路由 | `unit/route.test.js` + `unit/upstream.test.js`（熔断态仍解析成功）＋ static（stopRuntime 中 unlock 先于 kill）＋ `integration/wsl.test.js`（lock→unlock 往返实测） |
+| 坑 16：中文输入 | 终端一个字打不进、Chrome 候选窗豆腐块 | `static/consistency.test.js`（启动器用 lxterminal 且无 `-xrm`；rime-setup 装 ibus-gtk3；entrypoint 部署配色；自检查 `im-ibus.so`） |
 
 ## 单元测试怎么加载 main.js（loader）
 

@@ -1,26 +1,15 @@
 #!/bin/sh
 # 启动器 / 任务栏：在工作区里启动 Claude Code
-# xterm + Fira Code：镜像里没有位图字体包，走 Xft 才有清晰字形；
-# +sb 关掉老式滚动条，-b 留内边距，观感接近普通终端。
 #
-# 这一行是「输入法能不能用」的关键：用户点按钮时是新开一个 wsl.exe 会话，
-# 继承不到 entrypoint 里 export 的 XMODIFIERS，必须从落盘的环境读回来。
+# 1.0.31：xterm → lxterminal（GTK3）。
+#   以前这一行是「输入法能不能用」的全部战场：xterm 只认 XIM，要靠
+#   `openIm: true` + `preeditType: Root` 硬凑输入上下文，实际经常建不起来，
+#   于是 Claude Code 终端里一个中文都打不进；Chrome 走 XIM 也只是勉强能用，
+#   候选窗飘在左下角、字形变方块。
+#   现在 lxterminal 走 GTK3 原生 im module（GTK_IM_MODULE=ibus），
+#   IBus 通过 D-Bus 直接给 GTK 输入框回 preedit，XIM 只作老客户端兼容。
+#   点按钮时是新开一个 wsl.exe 会话，必须从落盘的环境读回代理/输入法变量。
 [ -f /opt/config/runtime-env ] && . /opt/config/runtime-env
 
-set -- -fa "Fira Code" -fs 12 -geometry 112x32 \
-  -bg "#10141b" -fg "#d7dce5" -cr "#d97757" \
-  -b 10 +sb -title "Claude Code" -e /opt/scripts/session-claude.sh
-
-# xterm 只认 XIM；设成 XIM 才会去连 IBus 注册的 @server=ibus。
-# 1.0.26 实测补的两项（此前只设 inputMethod，XIM 输入上下文根本没打开）：
-#   · openIm: true —— xterm 372 默认不主动打开 IM，不显式开就只会把按键当 ASCII 送进 pty。
-#     加了它才会出现与 IBus 协商 preedit 的日志，证明 IC 真的建起来了。
-#   · preeditType: Root —— IBus 的 XIM server 不支持 OverTheSpot，设它会报
-#     "input method doesn't support my preedit type"；Root 对应 XIMPreeditNothing，可用。
-# 没启用输入法时不加这些资源，xterm 保持原有行为。
-if [ -n "${XMODIFIERS:-}" ]; then
-  set -- -xrm "XTerm*inputMethod: XIM" \
-         -xrm "XTerm*openIm: true" \
-         -xrm "XTerm*preeditType: Root" "$@"
-fi
-exec xterm "$@"
+exec lxterminal --no-remote --title="Claude Code" --geometry=112x32 \
+  -e /opt/scripts/session-claude.sh

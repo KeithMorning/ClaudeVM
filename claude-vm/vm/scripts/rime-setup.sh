@@ -4,17 +4,19 @@
 #
 # 为什么是 IBus 而不是 fcitx5：
 #   WSLg 不转发 Windows IME 的 preedit 组合串，但**按键本身是转发的**。
-#   所以把输入法放在虚拟机内部跑，组合与提交都在 Linux 侧完成，
-#   再经 XIM 把中文交给 xterm → pty → Claude Code，整条链路不碰 Windows IME。
-#   而 xterm 只支持 XIM；fcitx5 从 5.0 起移除了 XIM（只剩 DBus/GTK/Wayland），
-#   实测它的 fcitx4frontend 加载后 XIM_SERVERS 依然不注册。
-#   IBus 有专门的 /usr/libexec/ibus-x11，实测 `ibus-daemon -d --xim` 能注册
-#   XIM_SERVERS=@server=ibus。两者都是同一个 Rime 引擎，只是外壳不同。
+#   所以把输入法放在虚拟机内部跑，组合与提交都在 Linux 侧完成，不碰 Windows IME。
+#   IBus 保留 `--xim` 只为兼容老 Xt 客户端；**1.0.31 起真正的中文入口是
+#   GTK3 原生 im module**：装 ibus-gtk3（80KB）后，lxterminal 与 Chrome 都走
+#   `GTK_IM_MODULE=ibus`，候选框跟随光标、Ctrl+Space 切换可靠、Pango 正确渲染 CJK。
+#   以前只有 XIM：xterm 连输入上下文都建不起来（终端一个中文都打不进），
+#   Chrome 勉强能收字符但候选窗飘在左下角、字形变方块 —— 都是 XIM 的锅。
+#   fcitx5 从 5.0 起移除了 XIM，且换它要迁词库 + 显式管 D-Bus，收益不抵复杂度。
 #
 # 为什么按需联网装、而不是塞进 rootfs：
 #   WSL 发行版的文件系统是持久的，装一次就一直在；不必重打 720MB 的 rootfs。
-#   apt 部分约 20MB，且 --no-install-recommends 后**不含任何字体包** ——
-#   这很关键，装 fonts-noto-cjk 会命中 checkcc 的字体名单直接扣分。
+#   apt 部分约 20MB（含 80KB 的 ibus-gtk3 与 593KB 的 lxterminal），且
+#   --no-install-recommends 后**不含任何字体包** —— 这很关键，装
+#   fonts-noto-cjk 会命中 checkcc 的字体名单直接扣分。
 #   词库 zip 已随安装包放在 /opt/assets/rime，离线解压，不依赖 GitHub 可达性。
 #
 # 关于「换成万象词库有没有影响」：
@@ -30,15 +32,19 @@ need=0
 command -v ibus-daemon >/dev/null 2>&1 || need=1
 [ -x /usr/libexec/ibus-x11 ] || need=1
 [ -f /usr/share/rime-data/stroke.schema.yaml ] || need=1
+# 1.0.31：GTK3 原生输入模块 + GTK 终端。缺了 im-ibus.so，GTK 应用会整体
+# 降级到 XIM；缺了 lxterminal 就还在用只认 XIM 的 xterm。两个都是小包。
+ls /usr/lib/*/gtk-3.0/*/immodules/im-ibus.so >/dev/null 2>&1 || need=1
+command -v lxterminal >/dev/null 2>&1 || need=1
 
 if [ "$need" = "1" ]; then
-  echo "[rime] 首次启用：安装 ibus / ibus-rime / stroke 基础方案…"
+  echo "[rime] 首次启用：安装 ibus / ibus-rime / GTK 输入模块 / lxterminal…"
   export DEBIAN_FRONTEND=noninteractive
   apt-get update -qq >/dev/null 2>&1
   # 明确不装任何中文字体包：中文渲染复用镜像里的 Noto Sans SC，
   # 它的家族名不在 checkcc 硬编码的 17 个指纹名单里。
   if ! apt-get install -y --no-install-recommends \
-        ibus ibus-rime rime-data-stroke \
+        ibus ibus-rime rime-data-stroke ibus-gtk3 lxterminal \
         >/tmp/rime-setup.log 2>&1; then
     echo "[rime] 安装失败，详见 /tmp/rime-setup.log"
     exit 1

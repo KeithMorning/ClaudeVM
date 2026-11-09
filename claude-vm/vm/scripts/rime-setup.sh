@@ -1,16 +1,17 @@
 #!/usr/bin/env bash
 # ============================================================
-# rime-setup.sh — 按需安装 IBus + Rime（万象拼音 Pure 词库）
+# rime-setup.sh — 按需安装 fcitx5 + Rime（万象拼音 Pure 词库）
 #
-# 为什么是 IBus 而不是 fcitx5：
+# 为什么是 fcitx5 而不是 IBus（1.0.34 起）：
 #   WSLg 不转发 Windows IME 的 preedit 组合串，但**按键本身是转发的**。
 #   所以把输入法放在虚拟机内部跑，组合与提交都在 Linux 侧完成，不碰 Windows IME。
-#   IBus 保留 `--xim` 只为兼容老 Xt 客户端；**1.0.31 起真正的中文入口是
-#   GTK3 原生 im module**：装 ibus-gtk3（80KB）后，lxterminal 与 Chrome 都走
-#   `GTK_IM_MODULE=ibus`，候选框跟随光标、Ctrl+Space 切换可靠、Pango 正确渲染 CJK。
-#   以前只有 XIM：xterm 连输入上下文都建不起来（终端一个中文都打不进），
-#   Chrome 勉强能收字符但候选窗飘在左下角、字形变方块 —— 都是 XIM 的锅。
-#   fcitx5 从 5.0 起移除了 XIM，且换它要迁词库 + 显式管 D-Bus，收益不抵复杂度。
+#   1.0.31~1.0.33 用 IBus + ibus-gtk3，输入能进了，但 IBus 的候选面板在 VNC
+#   串流里有天花板：候选窗不跟光标（钉在屏幕左下角）、竖排老式 1-9 样式、
+#   面板字体回退失败出豆腐块 —— 都是 IBus 面板自身的问题，调参无解。
+#   fcitx5 的面板（classicui）跟手、横排候选、字体正常，是国内 Linux 桌面
+#   事实标准；Rime 引擎与万象词库原样复用，只是换壳。
+#   注意 fcitx5 5.0 起没有 XIM 前端 —— 主链路本来就是 GTK3 im module
+#   （lxterminal / Chrome 走 GTK_IM_MODULE=fcitx），不需要 XIM。
 #
 # 为什么按需联网装、而不是塞进 rootfs：
 #   WSL 发行版的文件系统是持久的，装一次就一直在；不必重打 720MB 的 rootfs。
@@ -29,22 +30,21 @@ set -u
 [ -f /opt/config/runtime-env ] && . /opt/config/runtime-env
 
 need=0
-command -v ibus-daemon >/dev/null 2>&1 || need=1
-[ -x /usr/libexec/ibus-x11 ] || need=1
+command -v fcitx5 >/dev/null 2>&1 || need=1
 [ -f /usr/share/rime-data/stroke.schema.yaml ] || need=1
-# 1.0.31：GTK3 原生输入模块 + GTK 终端。缺了 im-ibus.so，GTK 应用会整体
-# 降级到 XIM；缺了 lxterminal 就还在用只认 XIM 的 xterm。两个都是小包。
-ls /usr/lib/*/gtk-3.0/*/immodules/im-ibus.so >/dev/null 2>&1 || need=1
+# GTK3 原生输入模块 + GTK 终端。缺了 im-fcitx5.so，GTK 应用会整体
+# 降级到 XIM（fcitx5 没有 XIM 前端 = 输入直接哑掉）；缺了 lxterminal 就没终端。
+ls /usr/lib/*/gtk-3.0/*/immodules/im-fcitx5.so >/dev/null 2>&1 || need=1
 command -v lxterminal >/dev/null 2>&1 || need=1
 
 if [ "$need" = "1" ]; then
-  echo "[rime] 首次启用：安装 ibus / ibus-rime / GTK 输入模块 / lxterminal…"
+  echo "[rime] 首次启用：安装 fcitx5 / fcitx5-rime / GTK 输入模块 / lxterminal…"
   export DEBIAN_FRONTEND=noninteractive
   apt-get update -qq >/dev/null 2>&1
   # 明确不装任何中文字体包：中文渲染复用镜像里的 Noto Sans SC，
   # 它的家族名不在 checkcc 硬编码的 17 个指纹名单里。
   if ! apt-get install -y --no-install-recommends \
-        ibus ibus-rime rime-data-stroke ibus-gtk3 lxterminal \
+        fcitx5 fcitx5-rime fcitx5-frontend-gtk3 rime-data-stroke lxterminal \
         >/tmp/rime-setup.log 2>&1; then
     echo "[rime] 安装失败，详见 /tmp/rime-setup.log"
     exit 1
@@ -58,10 +58,20 @@ fi
 # 只有 librime 1.7.3；Pure 官方定位就是「老系统 / 旧 Rime / 无 Lua 环境」。
 # 实测在 1.7.3 上成功编译出 wanxiang_pure.table.bin（约 59MB）。
 # 词库自带 opencc/（s2t / TWVariants 等），所以 Pure 仍能打繁体，不依赖 Lua。
-RIME_DIR=/root/.config/ibus/rime
+# fcitx5-rime 的用户数据目录是 ~/.local/share/fcitx5/rime（ibus-rime 是
+# ~/.config/ibus/rime）。1.0.34 起换到 fcitx5 目录；老环境（1.0.31~1.0.33 用
+# ibus 部署过万象词库）一次性把数据迁过来，避免 146MB 词库重新解压编译。
+RIME_DIR=/root/.local/share/fcitx5/rime
+OLD_RIME_DIR=/root/.config/ibus/rime
 WANT=/opt/assets/rime/wanxiang-pure.zip
 STAMP="$RIME_DIR/.wanxiang-v18.1.8"
 mkdir -p "$RIME_DIR"
+if [ ! -f "$STAMP" ] && [ -f "$OLD_RIME_DIR/.wanxiang-v18.1.8" ]; then
+  echo "[rime] 迁移 ibus 时代的万象词库到 fcitx5 数据目录…"
+  # build/ 是编译产物，跨引擎版本不保证兼容，不迁 —— fcitx5-rime 首次使用会重编
+  (cd "$OLD_RIME_DIR" && tar cf - --exclude=build .) | (cd "$RIME_DIR" && tar xf -)
+  touch "$STAMP"
+fi
 if [ -f "$WANT" ] && [ ! -f "$STAMP" ]; then
   echo "[rime] 首次部署万象词库（解压约 75MB，首次编译约 1 分钟）…"
   if python3 - "$WANT" "$RIME_DIR" <<'PY'
@@ -84,7 +94,7 @@ if [ -f "$RIME_DIR/wanxiang_pure.schema.yaml" ]; then
 else
   SCHEMA=luna_pinyin
 fi
-# ibus-rime 的用户数据目录是 ~/.config/ibus/rime，不是 ~/.config/fcitx5/rime。
+# fcitx5-rime 的用户数据目录见上（~/.local/share/fcitx5/rime）。
 cat > "$RIME_DIR/default.custom.yaml" <<YAML
 patch:
   schema_list:
@@ -93,12 +103,26 @@ patch:
     page_size: 9
 YAML
 
-# ibus 预加载 rime 引擎（无图形面板，靠 dconf 直接写）。
-# dconf 需要 session dbus，失败也没关系 —— entrypoint 会再执行一次 `ibus engine rime`。
-if command -v dconf >/dev/null 2>&1; then
-  dconf write /desktop/ibus/general/preload-engines "['rime']" >/dev/null 2>&1 || true
-  dconf write /desktop/ibus/general/engines-order "['rime']" >/dev/null 2>&1 || true
-fi
+# fcitx5 的输入法组配置：默认引擎设为 rime（写 profile，无图形界面也能配）。
+# 触发键用 fcitx5 默认的 Ctrl+Space；中英切换是 Rime 内部的 Shift，不动。
+mkdir -p /root/.config/fcitx5
+cat > /root/.config/fcitx5/profile <<'PROFILE'
+[Groups/0]
+Name=Default
+Default Layout=us
+DefaultIM=rime
+
+[Groups/0/Items/0]
+Name=keyboard-us
+Layout=
+
+[Groups/0/Items/1]
+Name=rime
+Layout=
+
+[GroupOrder]
+0=Default
+PROFILE
 
 echo "[rime] 配置完成：$SCHEMA"
 exit 0

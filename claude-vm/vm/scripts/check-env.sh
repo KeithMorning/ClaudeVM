@@ -540,24 +540,24 @@ fi
 fi
 
 # ------------------------------------------------------------
-# 2.5) 中文输入法（可选，仅 INPUT_METHOD=rime 时要求 XIM 正常）
+# 2.5) 中文输入法（可选，仅 INPUT_METHOD=rime 时要求 fcitx5 正常）
 # ------------------------------------------------------------
 _IM="${INPUT_METHOD:-off}"
 if [ "$_IM" != "rime" ]; then
   add desktop info "中文输入法" "未启用" \
     "WSLg 不转发 Windows IME 组合事件；中文可用宿主输入法打好后 Ctrl+Shift+V 粘贴。" ""
-elif ! ls /usr/lib/*/gtk-3.0/*/immodules/im-ibus.so >/dev/null 2>&1; then
-  # 1.0.31：XIM 已不是主链路，缺 GTK 原生模块才是「终端打不出中文」的真因
+elif ! ls /usr/lib/*/gtk-3.0/*/immodules/im-fcitx5.so >/dev/null 2>&1; then
+  # fcitx5 没有 XIM 前端，缺 GTK 原生模块 = GTK 应用输入直接哑掉
   add desktop warn "中文输入法" "已启用但缺 GTK 输入模块" \
-    "没有 ibus-gtk3，lxterminal / Chrome 会降级到 XIM：终端可能一个中文都打不进，候选框不跟随光标。" \
-    "点「停止」再「启动」，rime-setup 会按需补装 ibus-gtk3（仅 80KB）。"
-elif xprop -root XIM_SERVERS 2>/dev/null | grep -q '@server=ibus'; then
-  add desktop pass "中文输入法" "IBus + Rime（GTK 原生 + XIM 兼容）" \
-    "输入法跑在虚拟机内部；1.0.31 起 GTK 应用经 ibus-gtk3 走 D-Bus，候选框跟随光标、Pango 正确渲染中文。" ""
+    "没有 fcitx5-frontend-gtk3，lxterminal / Chrome 连不到 fcitx5：终端可能一个中文都打不进。" \
+    "点「停止」再「启动」，rime-setup 会按需补装（约 1MB）。"
+elif fcitx5-remote >/dev/null 2>&1; then
+  add desktop pass "中文输入法" "fcitx5 + Rime（GTK 原生）" \
+    "输入法跑在虚拟机内部；面板跟手、横排候选，Ctrl+Space 开关、Shift 中英切换。" ""
 else
-  add desktop warn "中文输入法" "已启用但 IBus 服务未就绪" \
-    "ibus-daemon 没能注册到 X root，终端里可能打不出中文。" \
-    "点「停止」再「启动」重建会话；反复失败查看 /tmp/ibus-daemon.log。"
+  add desktop warn "中文输入法" "已启用但 fcitx5 服务未就绪" \
+    "fcitx5 没能在会话总线上注册，终端里可能打不出中文。" \
+    "点「停止」再「启动」重建会话；反复失败查看 /tmp/fcitx5.log。"
 fi
 
 # 出口信息：优先经代理探测；代理不通时退回直连，并如实标注

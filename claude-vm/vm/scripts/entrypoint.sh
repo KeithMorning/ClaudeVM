@@ -429,6 +429,23 @@ websockify --web=/usr/share/novnc "${NOVNC_BIND:-127.0.0.1}:${NOVNC_PORT:-6080}"
 # 日志里就是「运行时进程退出 code=1」，同时 Chrome 打不开、输入法消失、桌面全没。
 # 和 wslg 模式一样放一个永不退出的子进程把 wait 挂住；desktop-guard.sh 负责
 # 把崩掉的组件逐个拉回来，用户不必手动「停止 → 启动」。
+# D-Bus 会话总线必须在 desktop-guard 启动之前就位：guard 的输入法探活走
+# fcitx5-remote（需要总线地址），没有它 guard 会把 fcitx5 误判成死掉，
+# 4 秒一轮杀掉重拉 —— 表现就是打字时好时坏、fcitx5 日志里反复 Unloading addon。
+if [ -z "${DBUS_SESSION_BUS_ADDRESS:-}" ]; then
+  if command -v dbus-launch >/dev/null 2>&1; then
+    eval "$(dbus-launch --sh-syntax)" 2>/dev/null || true
+  fi
+  if [ -z "${DBUS_SESSION_BUS_ADDRESS:-}" ] && command -v dbus-daemon >/dev/null 2>&1; then
+    _bus_sock=/tmp/claude-vm-dbus.sock
+    rm -f "$_bus_sock"
+    DBUS_SESSION_BUS_ADDRESS="unix:path=$_bus_sock"
+    dbus-daemon --session --address="$DBUS_SESSION_BUS_ADDRESS" --fork \
+      >/tmp/dbus-session.log 2>&1 || true
+  fi
+  export DBUS_SESSION_BUS_ADDRESS
+fi
+
 sleep infinity &
 nohup /opt/scripts/desktop-guard.sh >/tmp/desktop-guard.log 2>&1 &
 
@@ -452,38 +469,57 @@ echo "[claude-vm] WSLg 模式就绪：DISPLAY=:0（无 Xtigervnc / websockify）
 fi
 
 # 2.45) 中文输入法 —— 刻意放在 DISPLAY_MODE 分支之后
-#   这一段原来在文件前部，那时 DISPLAY 还没确定（WSLg 继承 :0，desktop 要到
-#   4d 段才 export :1）。ibus-daemon 会把 XIM_SERVERS 注册到 :0 根窗口，
-#   而串流桌面的 xterm / Chrome 全在 :1 —— 表现就是「输入法切不了」。
-#   现在两种模式都在各自的 X server 上注册，且早于 runtime-env 写盘。
-# 2.45) 中文输入法（可选）：IBus + Rime 万象拼音
+#   （DISPLAY 必须先确定；输入法服务要注册到正确的 X server / 会话总线，
+#    且早于 runtime-env 写盘 —— 7) 落盘会把 DBUS/GTK_IM_MODULE 传给独立会话。）
+# 2.45) 中文输入法（可选）：fcitx5 + Rime 万象拼音（1.0.34 起）
 #   WSLg 不转发 Windows IME 的 preedit 组合串，但按键本身是转发的 ——
 #   所以输入法跑在虚拟机内部，组合与提交都在 Linux 侧完成。
-#   1.0.31：真正的中文入口是 **GTK3 原生 im module**（ibus-gtk3 由 rime-setup 装），
-#   lxterminal 与 Chrome 经 GTK_IM_MODULE=ibus 走 D-Bus，候选框跟随光标。
-#   这里仍带 --xim 只是兼容老 Xt 客户端，XIM 已不再是主链路，别再为它调
-#   xterm 的 openIm/preeditType —— 那条路的输入上下文根本建不稳。
+#   壳是 fcitx5（面板跟手、横排候选、字体正常），引擎是 Rime。
+#   历史：1.0.31~1.0.33 用 IBus，输入能进了，但 IBus 面板在 VNC 里
+#   候选窗不跟光标、竖排老样式、豆腐块 —— 面板天花板，换 fcitx5 根治。
+#   fcitx5 依赖 D-Bus 会话总线（ibus 可以 autolaunch，fcitx5-remote 直接报错），
+#   所以这里显式起一个 session bus 并写进 runtime-env。
 #   daemon 必须挂在本会话下：拉起它的 wsl.exe 一旦退出，输入法服务跟着消失。
 INPUT_METHOD="${INPUT_METHOD:-off}"
 if [ "$INPUT_METHOD" = "rime" ]; then
   /opt/scripts/rime-setup.sh || echo "[claude-vm] 输入法安装失败，本次不启用"
-  if command -v ibus-daemon >/dev/null 2>&1; then
-    pkill -x ibus-daemon 2>/dev/null || true
-    export XMODIFIERS="@im=ibus"
-    export GTK_IM_MODULE="ibus"
-    export QT_IM_MODULE="ibus"
+  if command -v fcitx5 >/dev/null 2>&1; then
+    pkill -x fcitx5 2>/dev/null || true
+    # D-Bus 会话总线：fcitx5 的前端/面板/探活全走它，没有它 fcitx5 直接起不来
+    if [ -z "${DBUS_SESSION_BUS_ADDRESS:-}" ]; then
+      if command -v dbus-launch >/dev/null 2>&1; then
+        eval "$(dbus-launch --sh-syntax)" 2>/dev/null || true
+      fi
+      if [ -z "${DBUS_SESSION_BUS_ADDRESS:-}" ] && command -v dbus-daemon >/dev/null 2>&1; then
+        _bus_sock=/tmp/claude-vm-dbus.sock
+        rm -f "$_bus_sock"
+        DBUS_SESSION_BUS_ADDRESS="unix:path=$_bus_sock"
+        dbus-daemon --session --address="$DBUS_SESSION_BUS_ADDRESS" --fork \
+          >/tmp/dbus-session.log 2>&1 || true
+      fi
+      export DBUS_SESSION_BUS_ADDRESS
+    fi
+    export XMODIFIERS="@im=fcitx"
+    export GTK_IM_MODULE="fcitx"
+    export QT_IM_MODULE="fcitx"
     # 开头是 set -e，daemon 启动失败不能带走整个 entrypoint（否则整台桌面消失）
-    ibus-daemon -d --xim >/tmp/ibus-daemon.log 2>&1 || true
-    _xim_ok=0
+    fcitx5 -d --replace >/tmp/fcitx5.log 2>&1 || true
+    _im_ok=0
     for _ in $(seq 1 12); do
-      if xprop -root XIM_SERVERS 2>/dev/null | grep -q '@server=ibus'; then _xim_ok=1; break; fi
+      if fcitx5-remote >/dev/null 2>&1; then _im_ok=1; break; fi
       sleep 0.5
     done
-    if [ "$_xim_ok" = "1" ]; then
-      ibus engine rime >/dev/null 2>&1 || true
-      echo "[claude-vm] 输入法已启用：IBus + Rime 万象拼音，XIM=@server=ibus"
+    if [ "$_im_ok" = "1" ]; then
+      # 起来 ≠ 可用：fcitx5 默认处于「关闭」态（按键直接透传成 ASCII）。
+      # 实测 -s rime 切引擎这步才会真正激活（-o 单独用只到 inactive），
+      # 两个都发并留一次重试，保证用户开机打字就是中文态。
+      fcitx5-remote -s rime >/dev/null 2>&1 || true
+      fcitx5-remote -o >/dev/null 2>&1 || true
+      sleep 1
+      fcitx5-remote -o >/dev/null 2>&1 || true
+      echo "[claude-vm] 输入法已启用：fcitx5 + Rime 万象拼音（Ctrl+Space 开关，Shift 中英）"
     else
-      echo "[claude-vm] 输入法 XIM 未注册，中文输入可能不可用（详见 /tmp/ibus-daemon.log）"
+      echo "[claude-vm] fcitx5 未能就绪，中文输入可能不可用（详见 /tmp/fcitx5.log）"
     fi
   fi
 fi

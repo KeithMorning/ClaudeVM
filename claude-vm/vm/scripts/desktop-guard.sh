@@ -46,17 +46,20 @@ while true; do
       >>/tmp/websockify-guard.log 2>&1 &
   fi
 
-  # 输入法：XIM_SERVERS 是根窗口上的 atom，进程活着也可能没注册成功。
-  # 必须按 :1 检查 —— ibus 若注册到 WSLg 的 :0，串流窗口里的 xterm 连不上。
+  # 输入法（1.0.34 fcitx5）：fcitx5-remote 探活比 XIM atom 可靠 ——
+  # fcitx5 走 D-Bus，服务死了前端立刻失联，remote 直接非零退出。
+  # 进程活着但 D-Bus 名字没注册的情况也能被这个探测抓到。
   if [ "$IM" = "rime" ] && alive_x &&
-     ! DISPLAY=:1 xprop -root XIM_SERVERS 2>/dev/null | grep -q '@server=ibus'; then
-    log "XIM 未注册 → 按 DISPLAY=:1 重启 ibus"
-    pkill -x ibus-daemon 2>/dev/null || true
+     ! fcitx5-remote >/dev/null 2>&1; then
+    log "fcitx5 未就绪 → 重启 fcitx5"
+    pkill -x fcitx5 2>/dev/null || true
     sleep 1
-    DISPLAY=:1 XMODIFIERS='@im=ibus' GTK_IM_MODULE=ibus QT_IM_MODULE=ibus \
-      ibus-daemon -d --xim >/tmp/ibus-guard.log 2>&1
+    DISPLAY=:1 XMODIFIERS='@im=fcitx' GTK_IM_MODULE=fcitx QT_IM_MODULE=fcitx \
+      fcitx5 -d --replace >/tmp/fcitx5-guard.log 2>&1
     sleep 2
-    DISPLAY=:1 ibus engine rime >/dev/null 2>&1 || true
+    # 重启后要激活并切回 rime，否则又回到「按键透传」态（顺序同 entrypoint）
+    fcitx5-remote -s rime >/dev/null 2>&1 || true
+    fcitx5-remote -o >/dev/null 2>&1 || true
   fi
 
   sleep "$INTERVAL"

@@ -105,13 +105,13 @@ test('坑 14：entrypoint 的 wait 有 sleep infinity 兜底（会话猝死）',
   assert.match(ep(), /sleep infinity &/, 'desktop 分支必须挂住 wait，否则任一组件退出即会话死亡');
 });
 
-test('坑 14：输入法段位于 DISPLAY=:1 之后（XIM 注册错 X server）', () => {
+test('坑 14：输入法段位于 DISPLAY=:1 之后（注册到错误 X server）', () => {
   const s = ep();
   const inputSection = s.indexOf('# 2.45) 中文输入法');
   const displayExport = s.indexOf('export DISPLAY=:1');
   assert.ok(inputSection > 0, '找不到输入法段标记 # 2.45)');
   assert.ok(displayExport > 0, '找不到 export DISPLAY=:1');
-  assert.ok(inputSection > displayExport, 'ibus 必须在 DISPLAY 确定后启动，否则 XIM 注册到 WSLg :0');
+  assert.ok(inputSection > displayExport, '输入法服务必须在 DISPLAY 确定后启动，否则注册到 WSLg :0');
 });
 
 test('坑 14：Chrome 启动前清理 SingletonLock（Profile 被别的主机占用）', () => {
@@ -122,7 +122,7 @@ test('坑 14：Chrome 启动前清理 SingletonLock（Profile 被别的主机占
 
 test('坑 14：desktop-guard 自愈清单覆盖四个组件', () => {
   const g = readRel('claude-vm/vm/scripts/desktop-guard.sh');
-  for (const k of ['Xtigervnc', 'openbox', 'websockify', 'XIM_SERVERS']) {
+  for (const k of ['Xtigervnc', 'openbox', 'websockify', 'fcitx5-remote']) {
     assert.ok(g.includes(k), `desktop-guard.sh 缺少组件 ${k}`);
   }
 });
@@ -202,9 +202,9 @@ test('坑 16：终端启动器走 GTK 原生输入（不再用 xterm / XIM 资�
   }
 });
 
-test('坑 16：rime-setup 按需装 GTK 输入模块与终端', () => {
+test('坑 16：rime-setup 按需装 GTK 输入模块与终端（1.0.34 起 fcitx5）', () => {
   const src = readRel('claude-vm/vm/scripts/rime-setup.sh');
-  for (const k of ['ibus-gtk3', 'lxterminal', 'im-ibus.so']) {
+  for (const k of ['fcitx5', 'fcitx5-rime', 'fcitx5-frontend-gtk3', 'lxterminal', 'im-fcitx5.so']) {
     assert.ok(src.includes(k), `rime-setup.sh 缺少 ${k}`);
   }
   assert.match(src, /--no-install-recommends/, '不能带进中文字体包（checkcc 字体名单）');
@@ -217,8 +217,41 @@ test('坑 16：entrypoint 部署 lxterminal 配色配置', () => {
 
 test('坑 16：自检先查 GTK im module，缺了要给出明确提示', () => {
   const src = readRel('claude-vm/vm/scripts/check-env.sh');
-  assert.ok(src.includes('im-ibus.so'), '自检应检查 GTK 原生模块');
-  assert.ok(src.includes('缺 GTK 输入模块'), '缺失时提示要具体，不能只说 XIM 未注册');
+  assert.ok(src.includes('im-fcitx5.so'), '自检应检查 GTK 原生模块');
+  assert.ok(src.includes('缺 GTK 输入模块'), '缺失时提示要具体，不能只说服务未就绪');
+});
+
+// ---------- 输入法壳换 fcitx5（1.0.34） ----------
+
+test('坑 18：fcitx5 依赖 D-Bus 会话，entrypoint 必须显式起总线', () => {
+  const s = ep();
+  assert.match(s, /DBUS_SESSION_BUS_ADDRESS/, 'entrypoint 应管理 D-Bus 会话地址');
+  assert.match(s, /dbus-launch|dbus-daemon/, '应显式启动 session bus（fcitx5 不能 autolaunch）');
+  assert.match(s, /fcitx5-remote/, '就绪探测用 fcitx5-remote（XIM atom 已不适用）');
+  assert.match(s, /GTK_IM_MODULE="fcitx"/, 'GTK_IM_MODULE 应指向 fcitx');
+});
+
+test('坑 18：fcitx5 启动后必须激活并切 rime（否则按键透传成 ASCII）', () => {
+  const s = ep();
+  assert.match(s, /fcitx5-remote -o/, '必须显式激活输入法（默认可能是关闭态）');
+  assert.match(s, /fcitx5-remote -s rime/, '必须切到 rime 引擎');
+});
+
+test('坑 18：D-Bus 就绪必须早于 desktop-guard（guard 探活走 fcitx5-remote）', () => {
+  const s = ep();
+  const dbusIdx = s.indexOf('export DBUS_SESSION_BUS_ADDRESS');
+  const guardIdx = s.indexOf('nohup /opt/scripts/desktop-guard.sh');
+  assert.ok(dbusIdx > 0 && guardIdx > 0, '找不到 D-Bus 导出或 guard 启动标记');
+  assert.ok(dbusIdx < guardIdx,
+    'D-Bus 导出必须在 guard 启动之前，否则 guard 的 fcitx5-remote 永远失败、4 秒一轮杀掉 fcitx5');
+});
+
+test('坑 18：万象词库部署在 fcitx5-rime 数据目录，老 ibus 数据可迁移', () => {
+  const src = readRel('claude-vm/vm/scripts/rime-setup.sh');
+  assert.match(src, /RIME_DIR=\/root\/\.local\/share\/fcitx5\/rime/,
+    'fcitx5-rime 的用户数据目录是 ~/.local/share/fcitx5/rime');
+  assert.match(src, /OLD_RIME_DIR/, '应迁移 ibus 时代的词库，不能让用户重新编译 146MB');
+  assert.match(src, /config\/fcitx5\/profile/, '默认引擎 rime 要写进 fcitx5 profile');
 });
 
 // ---------- 平台抽象（1.0.32 起支持 macOS） ----------

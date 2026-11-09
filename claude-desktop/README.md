@@ -144,68 +144,47 @@ Chrome `--lang` → 现场生成 `zh_TW.UTF-8` locale（不必重建 720MB rootf
 - **一致性判定**：删掉「时区必须和出口国家同地区」的旧逻辑（会误杀所有挂 VPN 的合法用户），
   改为只拦出口落在 CN/HK/MO；同时把「出口类型」对齐检测站口径，机房/骨干 ASN 标 warn 而非 pass。
 
-## 中文输入法（Rime · 万象拼音）
+## 中文输入法（fcitx5 + Rime · 万象拼音）
 
 WSLg **不转发 Windows IME 的 preedit 组合串**，但按键本身是转发的。所以把输入法放进虚拟机内部：
-按键 → X server → GTK3 应用（lxterminal / Chrome，经 `im-ibus.so`）→ IBus → Rime 组合 → 中文提交 → Claude Code。
+按键 → X server → GTK3 应用（lxterminal / Chrome，经 `im-fcitx5.so`）→ fcitx5 → Rime 组合 → 中文提交 → Claude Code。
 整条链路不经过 Windows IME。
 
-> **1.0.31 换了终端与输入链路。** 以前是 `xterm` + XIM：xterm 是纯 Xt 应用、只认 XIM，
-> 而 IBus 的 XIM 前端只支持 `preeditType: Root`，输入上下文常常根本建不起来 ——
-> 终端里一个中文都打不进；Chrome 勉强能收字符，但候选窗飘在左下角、字形变方块。
-> 现在换成 `lxterminal`（GTK3，593KB）+ `ibus-gtk3`（80KB）：走 GTK 原生 IM module 与
-> D-Bus，候选框跟随光标、`Ctrl+Space` 切换可靠、中文由 Pango 渲染（双宽字符宽度正确）。
-> IBus 仍带 `--xim` 只为兼容老 Xt 客户端，XIM 已不是主链路。
-> **词库、D-Bus 会话管理、守护脚本探活都不用改，总共只多约 0.7MB。**
+> **1.0.34 换了输入法的壳：IBus → fcitx5。** Rime 引擎与万象词库原样复用，只换外壳。
+> 动因：IBus 的候选面板在 VNC 串流里有天花板 —— 候选窗不跟光标（钉在屏幕左下角）、
+> 竖排 1-9 老样式、面板字体回退失败出豆腐块，1.0.26~1.0.33 七轮修补无效。
+> fcitx5 的面板（classicui）跟手、横排候选、字体正常，是国内 Linux 桌面事实标准。
+> 1.0.31 的 lxterminal（GTK3 终端）保留不变；fcitx5 没有 XIM 前端，主链路本来就是 GTK 原生。
 
-设置里的「中文输入法」选 **Rime 万象拼音** 即可，切换需「停止 → 启动」。
+### 快捷键（实测）
 
-### 换成万象词库有什么影响
+| 快捷键 | 作用 |
+|---|---|
+| `Ctrl+Space` | 输入法开/关（关 = 纯英文，开 = Rime 组合） |
+| `Shift`（单击） | Rime 内中文 ⇄ 英文（打英文数字时用） |
+| 数字 `1-9` | 选对应候选词；`-`/`=` 或方向键翻页 |
 
-- **检测评分：0 影响。** 词库只是 Rime 的 `.dict.yaml` / `.schema.yaml` 数据文件，
-  检测站看不到虚拟机里装了什么输入法，也看不到打进 Claude Code 的字。
-  它不碰系统时区、浏览器语言、canvas 字体探测、UA、WebRTC、出口 IP/ASN/DNS 任何一项，41 分不变。
-  唯一要守住的底线是**别装名单内的中文字体包**；万象本身零字体依赖，
-  繁体显示由 1.0.26 补的名单外 `Noto Sans TC` 承担。
-- **画像字面矛盾，但不构成风险。** 台北画像配简体拼音词库看起来不搭，但这个矛盾只体现在
-  「打出来的汉字」，不体现在任何被检测的系统信号上。反过来，台湾注音是大千式键盘，
-  习惯拼音的用户几乎没法用 —— 换万象是**可用性**的实质提升。
-  万象 Pure 自带 `opencc/`（s2t / TWVariants），仍可打繁体。
-- **体积与首次编译是唯一实际代价**：词库 zip 26MB 随安装包离线提供，解压约 75MB，
-  `librime` 首次编译出 `wanxiang_pure.table.bin` 约 59MB、耗时约 1 分钟；
-  安装包 / 源码包各 +26MB，VM 磁盘多占约 135MB。
-- **必须选 Pure 版**：Base / Pro / Lite 依赖 librime 的 Lua 插件，而 Ubuntu 22.04 只有
-  `librime 1.7.3`；Pure 官方定位就是「老系统 / 旧 Rime / 无 Lua 环境」，实测 v18.1.8 编译成功。
+按键经 noVNC 原样转发进虚拟机，快捷键链路没有被截断的问题。
 
-其余实现要点：
+### 实现要点
 
-- **保留 IBus，不换 fcitx5**：换 fcitx5 要把万象词库迁到 `~/.local/share/fcitx5/rime`、
-  显式起 D-Bus 会话并写进 `runtime-env`、改写守护脚本探活与自检 —— 复杂度远大于收益
-  （收益主要是候选框皮肤）。IBus + `ibus-gtk3` 已能走 GTK 原生前端，词库与守护逻辑全部不动。
-- 首次启用按需联网装约 20MB 的 IBus 组件（`ibus` / `ibus-rime` / `rime-data-stroke`）
-  外加两个小包：`ibus-gtk3`（80KB）与 `lxterminal`（593KB）；
-  **词库本身离线解压**，不依赖 GitHub 可达性，之后持久保存在 WSL 发行版里，不用每次装、不用重建 rootfs。
-  `--no-install-recommends` 确保不会带进任何中文字体包。
-- `ibus-daemon` 必须挂在 entrypoint 的常驻会话下；拉起它的 `wsl.exe` 一旦退出，XIM server 会一起消失。
-- 词库来源 `amzxyz/rime_wanxiang` v18.1.8 Pure，**CC BY 4.0**（包内自带 README 与许可说明，保留署名）。
-- 自检「中文输入法」项：先查 GTK3 的 `im-ibus.so` 是否在（缺它会明确提示「缺 GTK 输入模块」），
-  再查 XIM atom 与引擎状态。
+- 首次启用按需联网装 fcitx5 组件（`fcitx5` / `fcitx5-rime` / `fcitx5-frontend-gtk3`）
+  外加 `lxterminal`；`--no-install-recommends` 确保不带进任何中文字体包。
+  **万象词库离线解压**（约 75MB，编译一次约 1 分钟），不依赖 GitHub 可达性。
+- 老环境（1.0.31~1.0.33 的 ibus 时代）词库会自动从 `~/.config/ibus/rime` 迁到
+  fcitx5 的 `~/.local/share/fcitx5/rime`，不用重新解压编译。
+- **fcitx5 依赖 D-Bus 会话总线**，entrypoint 显式启动（dbus-launch）并写进
+  `runtime-env` 供所有 GUI 子进程继承；desktop-guard 的探活走 `fcitx5-remote`。
+- fcitx5 进程起来 ≠ 可输入：必须 `fcitx5-remote -s rime` + `-o` 激活（实测切引擎
+  那步才真正激活），entrypoint 与 guard 重启都会做。
+- 自检「中文输入法」项：先查 GTK3 的 `im-fcitx5.so`，再查 fcitx5 服务就绪状态。
 
-### 1.0.26 实测补的两处
+### 仍需真人按一次
 
-- **繁体渲染**：补一份 `Noto Sans TC`（11.9MB，Google Fonts 同系列）。检测站名单里是
-  `Noto Sans CJK TC` / `PingFang TC` / `Source Han Sans TC`，而 `Noto Sans TC` 家族名不在其中；
-  `fc-scan` 与自检「字体地区特征」都已确认不扣分。SC 留给简体，TC 负责繁体笔形。
-- **xterm 必须显式 `openIm: true`（历史记录，1.0.31 起已废弃）**：当时是在硬凑
-  xterm 372 的 XIM 输入上下文；`preeditType` 只能用 IBus 支持的 `Root`。
-  这些 `-xrm` 资源随 1.0.31 换成 lxterminal 一起删掉了 —— XIM 那条路本来就不稳。
-
-> **仍需真人按一次。** 自动化已验证：GTK3 的 `im-ibus` 模块缓存命中、
-> `XIM_SERVERS=@server=ibus` 注册、引擎切到 `rime`、万象词库编译完成，
-> 并在隔离的 `:9` 上确认 `lxterminal` 能稳定启动且无 IM 模块加载报错。
-> 但组合输入必须真人按键才算数：请在串流终端里按 `Ctrl+Space` 敲 `nihao` 看出不出字，
-> 再在 Chrome 输入框里试一次（候选框应跟随光标、字形正常）。
-> 宿主剪贴板桥（Ctrl+Shift+V）仍是零改动的中文输入兜底。
+自动化已验证：`im-fcitx5` 模块加载、fcitx5 服务就绪、Rime 组合出「你好」、
+Shift 中英切换、Ctrl+Space 开关（合成按键实测全过）。但候选窗的跟手效果与
+字形渲染要人眼确认：请在串流终端里按 `Ctrl+Space` 敲 `nihao`，看候选窗是否
+跟随光标、横排显示、字形正常。宿主剪贴板桥（Ctrl+Shift+V）仍是零改动的中文输入兜底。
 
 ## 网络熔断（fail-closed）
 

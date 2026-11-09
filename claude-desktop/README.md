@@ -178,6 +178,10 @@ WSLg **不转发 Windows IME 的 preedit 组合串**，但按键本身是转发�
 - fcitx5 进程起来 ≠ 可输入：必须 `fcitx5-remote -s rime` + `-o` 激活（实测切引擎
   那步才真正激活），entrypoint 与 guard 重启都会做。
 - 自检「中文输入法」项：先查 GTK3 的 `im-fcitx5.so`，再查 fcitx5 服务就绪状态。
+- **候选窗字形（1.0.35）**：万象词库含 CJK 扩展 B 区生僻字（如 `𤻌` `𦯏`），
+  镜像自带 Noto 子集覆盖不到会画成方框。首次启用会按需装 `fonts-hanazono`
+  （22MB，HanaMinA/B，家族名不在 checkcc 名单），默认字体与评分都不变。
+  不用 `fonts-noto-cjk-extra`（214MB 且命中名单）。
 
 ### 仍需真人按一次
 

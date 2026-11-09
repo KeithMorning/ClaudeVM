@@ -15,9 +15,12 @@
 #
 # 为什么按需联网装、而不是塞进 rootfs：
 #   WSL 发行版的文件系统是持久的，装一次就一直在；不必重打 720MB 的 rootfs。
-#   apt 部分约 20MB（含 80KB 的 ibus-gtk3 与 593KB 的 lxterminal），且
-#   --no-install-recommends 后**不含任何字体包** —— 这很关键，装
-#   fonts-noto-cjk 会命中 checkcc 的字体名单直接扣分。
+#   1.0.35 起 apt 部分：fcitx5 系（约 20MB）+ fonts-hanazono（22MB，约 52MB 落盘）。
+#   **这个字体包是特意加的**：万象词库含 CJK 扩展 B 区生僻字（U+20000+），
+#   镜像自带 Noto Sans SC/TC 是子集、覆盖不到 → 候选窗画方框。HanaMinA/B
+#   家族名「花園明朝」不在 checkcc 名单，且不改变默认 sans / 中文匹配。
+#   --no-install-recommends 保证不带进任何**名单内**中文字体包
+#   （fonts-noto-cjk-extra 214MB 且家族名直接命中名单，禁止使用）。
 #   词库 zip 已随安装包放在 /opt/assets/rime，离线解压，不依赖 GitHub 可达性。
 #
 # 关于「换成万象词库有没有影响」：
@@ -36,20 +39,31 @@ command -v fcitx5 >/dev/null 2>&1 || need=1
 # 降级到 XIM（fcitx5 没有 XIM 前端 = 输入直接哑掉）；缺了 lxterminal 就没终端。
 ls /usr/lib/*/gtk-3.0/*/immodules/im-fcitx5.so >/dev/null 2>&1 || need=1
 command -v lxterminal >/dev/null 2>&1 || need=1
+# 1.0.35：万象词库含大量 CJK 扩展 B 区生僻字（地名/古字），Noto Sans SC/TC
+# 是子集字体覆盖不到 → 候选窗画成方框。必须有一个覆盖 U+20000+ 的字体。
+# 用「该码位是否有字体覆盖」判定，而不是查包/文件，和具体字体包解耦。
+fc-list ':charset=20000' family 2>/dev/null | grep -qi . || need=1
 
 if [ "$need" = "1" ]; then
-  echo "[rime] 首次启用：安装 fcitx5 / fcitx5-rime / GTK 输入模块 / lxterminal…"
+  echo "[rime] 首次启用：安装 fcitx5 / Rime / 扩展区字形 / GTK 前端 / lxterminal…"
   export DEBIAN_FRONTEND=noninteractive
   apt-get update -qq >/dev/null 2>&1
-  # 明确不装任何中文字体包：中文渲染复用镜像里的 Noto Sans SC，
-  # 它的家族名不在 checkcc 硬编码的 17 个指纹名单里。
+  # 字体策略（1.0.35）：中文主体仍靠镜像自带的 Noto Sans SC/TC（不在 checkcc
+  # 指纹名单）。但它们是子集，缺 CJK 扩展 B 区（U+20000+）字形，而万象词库
+  # 把 𤻌/𦯏/𦰖/𦷵 这类生僻字排进高频候选 → 候选窗全是方框。
+  # 选 fonts-hanazono（22MB，HanaMinA/B，家族名「花園明朝」不在 22 个名单家族里），
+  # 不装 fonts-noto-cjk-extra（214MB 且 "Noto Sans CJK SC/TC" 直接命中名单扣分）。
+  # 字体回退是按需的：Noto 已有的字仍走 Noto，只有缺字形的才落到 HanaMin。
+  # --no-install-recommends 依旧保证不带进任何名单内中文字体包。
   if ! apt-get install -y --no-install-recommends \
         fcitx5 fcitx5-rime fcitx5-frontend-gtk3 rime-data-stroke lxterminal \
+        fonts-hanazono \
         >/tmp/rime-setup.log 2>&1; then
     echo "[rime] 安装失败，详见 /tmp/rime-setup.log"
     exit 1
   fi
-  echo "[rime] 安装完成（未引入任何字体包）"
+  fc-cache -f >/dev/null 2>&1 || true
+  echo "[rime] 安装完成（扩展区字形已覆盖，名单内字体零引入）"
 fi
 
 # ---- 万象拼音 Pure 词库（离线解压）----

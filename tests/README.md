@@ -51,6 +51,7 @@ cd claude-desktop && npm test
 | 坑 15：停止→启动死锁 | 熔断删默认路由，网关发现只认默认路由 | `unit/route.test.js` + `unit/upstream.test.js`（熔断态仍解析成功）＋ static（stopRuntime 中 unlock 先于 kill）＋ `integration/wsl.test.js`（lock→unlock 往返实测） |
 | 坑 16：中文输入 | 终端一个字打不进、Chrome 候选窗豆腐块 | `static/consistency.test.js`（启动器用 lxterminal 且无 `-xrm`；rime-setup 装 ibus-gtk3；entrypoint 部署配色；自检查 `im-ibus.so`） |
 | 坑 18：fcitx5 壳 | IBus 面板 VNC 天花板；guard 误杀；激活语义 | `static/consistency.test.js`（fcitx5 包清单；D-Bus 先于 guard；`-o`/`-s rime` 激活；词库迁 fcitx5 目录） |
+| 坑 19：候选窗方框 | 词库含 U+20000+ 生僻字，Noto 子集无字形 | `static/consistency.test.js`（装 fonts-hanazono、按码位检查覆盖、fc-cache；禁用 noto-cjk-extra；名单未被删减） |
 | 平台抽象（1.0.32） | macOS 移植：平台差异散进业务逻辑会失控 | `unit/backend.test.js`（pickBackendId / 工作区映射 / docker create 参数，直接 require `app/lib/vm-backend.js`）＋ static（main.js 不得直接 spawn wsl.exe、NOVNC_BIND=0.0.0.0、dist:mac 存在） |
 
 ## 单元测试怎么加载 main.js（loader）

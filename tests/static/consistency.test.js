@@ -285,3 +285,23 @@ test('坑 17：entrypoint 必须重设 XDG_RUNTIME_DIR（WSLg 目录属主不匹
   assert.match(s, /chmod 700 "\$XDG_RUNTIME_DIR"/);
   assert.match(s, /echo "export XDG_RUNTIME_DIR=/, '落盘 runtime-env 供菜单启动的应用继承');
 });
+
+// ---------- 候选窗字形（1.0.35） ----------
+
+test('坑 19：rime-setup 必须装覆盖 CJK 扩展 B 区的字体（否则候选窗画方框）', () => {
+  const s = readRel('claude-vm/vm/scripts/rime-setup.sh');
+  // 只检查可执行行：注释里会解释「为什么禁用 fonts-noto-cjk-extra」，不该被当成实际安装
+  const code = s.split('\n').filter((l) => !l.trim().startsWith('#')).join('\n');
+  assert.match(code, /fonts-hanazono/, '缺了它 U+20000+ 生僻候选无字形');
+  assert.match(code, /fc-list ':charset=20000'/, 'need 检查应按「码位有没有字体覆盖」判定');
+  assert.match(code, /fc-cache -f/, '装完必须刷新 fontconfig 缓存');
+  assert.doesNotMatch(code, /fonts-noto-cjk-extra/,
+    '214MB 且家族名 "Noto Sans CJK SC/TC" 命中 checkcc 名单，不能用');
+});
+
+test('坑 19：自检字体名单未因新增字体而放松', () => {
+  const s = readRel('claude-vm/vm/scripts/check-env.sh');
+  assert.ok(s.includes('Noto Sans CJK SC') && s.includes('WenQuanYi Micro Hei'),
+    '指纹名单必须保持完整，换字体不能靠删名单蒙混');
+  assert.doesNotMatch(s, /Hanazono|HanaMin|花園明朝/, '自检不该把合规字体误列入名单');
+});

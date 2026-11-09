@@ -22,6 +22,10 @@ build/rootfs-full-backup.tar.gz
 build/slimtest/
 *.log
 
+# 输入法复现的生成物（输出文本 / 截图，不进版本库；脚本本身入库）
+build/ime-*-out.txt
+build/shots/
+
 # WSL 发行版导出
 slim*.tar.gz
 

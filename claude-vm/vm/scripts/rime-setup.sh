@@ -109,12 +109,15 @@ else
   SCHEMA=luna_pinyin
 fi
 # fcitx5-rime 的用户数据目录见上（~/.local/share/fcitx5/rime）。
+# page_size 必须停在 6：万象 default.yaml 明确写了「候选词个数不得超过 6 个，
+# 7890 代表声调」—— 数字键 7/8/9/0 是声调筛选键，不是选字键。
+# 之前改成 9 会让第 7~9 个候选看起来在列表里、按数字却选不中。
 cat > "$RIME_DIR/default.custom.yaml" <<YAML
 patch:
   schema_list:
     - schema: $SCHEMA
   menu:
-    page_size: 9
+    page_size: 6
 YAML
 
 # fcitx5 的输入法组配置：默认引擎设为 rime（写 profile，无图形界面也能配）。
@@ -138,5 +141,15 @@ Layout=
 0=Default
 PROFILE
 
-echo "[rime] 配置完成：$SCHEMA"
+# 零候选时 classicui 会把整个候选窗 unmap；而默认的 client preedit 把编码交给
+# 应用绘制，候选窗里不显示输入码。两者叠加：输入 ffff 这种非法编码时既没候选、
+# 也看不到编码，退格删除全程盲（串流/wslg 两模式一致，与 X server 无关）。
+# 关掉「在应用中显示预编辑」，让 classicui 自己画编码：零候选时窗口仍保持
+# IsViewable 并显示输入码。配置项来自 fcitx5 核心库的 PreeditEnabledByDefault。
+cat > /root/.config/fcitx5/config <<'CONF'
+[Behavior]
+PreeditEnabledByDefault=False
+CONF
+
+echo "[rime] 配置完成：$SCHEMA（候选窗在零候选时保持可见，page_size=6）"
 exit 0

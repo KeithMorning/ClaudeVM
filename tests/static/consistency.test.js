@@ -305,3 +305,21 @@ test('坑 19：自检字体名单未因新增字体而放松', () => {
     '指纹名单必须保持完整，换字体不能靠删名单蒙混');
   assert.doesNotMatch(s, /Hanazono|HanaMin|花園明朝/, '自检不该把合规字体误列入名单');
 });
+
+// ---------- 零候选时候选窗消失（1.0.36） ----------
+
+test('坑 20：rime-setup 必须关闭 client preedit（否则 ffff 时候选窗 unmap、退格全盲）', () => {
+  const s = readRel('claude-vm/vm/scripts/rime-setup.sh');
+  // 只检查可执行行，注释里会解释这个配置项的来历
+  const code = s.split('\n').filter((l) => !l.trim().startsWith('#')).join('\n');
+  assert.match(code, /\/root\/\.config\/fcitx5\/config/, '必须写 fcitx5 全局配置');
+  assert.match(code, /\[Behavior\]/, '配置段是 [Behavior]');
+  assert.match(code, /PreeditEnabledByDefault=False/,
+    '关掉「在应用中显示预编辑」才能让 classicui 在零候选时保持窗口可见');
+});
+
+test('坑 20：page_size 保持 6（万象 7890 是声调键，不是选字键）', () => {
+  const s = readRel('claude-vm/vm/scripts/rime-setup.sh');
+  assert.match(s, /page_size: 6/, 'page_size 必须为 6');
+  assert.doesNotMatch(s, /page_size: 9/, '改成 9 会让第 7~9 个候选按数字选不中');
+});

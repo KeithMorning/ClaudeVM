@@ -224,11 +224,12 @@ test('坑 16：自检先查 GTK im module，缺了要给出明确提示', () => 
 // ---------- 平台抽象（1.0.32 起支持 macOS） ----------
 
 test('平台抽象：差异收敛在 vm-backend，main.js 不直接 spawn wsl.exe', () => {
-  assert.ok(MAIN_SRC.includes("require('./lib/vm-backend')"), 'main.js 应依赖 vm-backend');
+  assert.ok(MAIN_SRC.includes("require('./lib/vm-backend').getBackend()"),
+    'main.js 必须绑定 getBackend() 实例 —— 只 require 模块拿不到方法，调用即 TypeError（1.0.32 启动回归的根因）');
   assert.ok(existsRel('claude-desktop/app/lib/vm-backend.js'), 'vm-backend.js 必须存在');
   assert.doesNotMatch(MAIN_SRC, /spawn\('wsl\.exe'/, 'spawn 应走 backend.spawnEntry');
   const vb = readRel('claude-desktop/app/lib/vm-backend.js');
-  for (const k of ['pickBackendId', 'createContainerBackend', 'createWslBackend']) {
+  for (const k of ['pickBackendId', 'createContainerBackend', 'createWslBackend', 'getBackend']) {
     assert.ok(vb.includes(k), `vm-backend.js 缺少 ${k}`);
   }
 });
@@ -242,4 +243,12 @@ test('平台抽象：容器模式 noVNC 发布到 0.0.0.0（websockify 绑回环
 test('工程基本面：dist:mac 构建入口存在（macOS 支持）', () => {
   const pkg = JSON.parse(readRel('claude-desktop/package.json'));
   assert.ok(pkg.scripts['dist:mac'], '必须有 dist:mac');
+});
+
+test('坑 17：entrypoint 必须重设 XDG_RUNTIME_DIR（WSLg 目录属主不匹配会卡死 GTK）', () => {
+  const s = ep();
+  assert.match(s, /export XDG_RUNTIME_DIR=\/tmp\/claude-vm-runtime/,
+    'root 会话必须用自己属主的运行时目录，否则 GTK3 应用窗口永不出现');
+  assert.match(s, /chmod 700 "\$XDG_RUNTIME_DIR"/);
+  assert.match(s, /echo "export XDG_RUNTIME_DIR=/, '落盘 runtime-env 供菜单启动的应用继承');
 });

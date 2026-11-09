@@ -3,6 +3,13 @@ set -e
 
 # 0) Node / Claude Code 可执行路径（WSL 导入后不继承镜像 ENV，这里显式补上）
 export PATH="/usr/local/lib/nodejs/node-v20.18.1-linux-x64/bin:$PATH"
+
+# XDG_RUNTIME_DIR：WSLg 把默认运行时目录建在 /mnt/wslg/runtime-dir 且属主是 uid 1000，
+# 而本会话以 root 运行 —— 属主不匹配会让 GTK3 应用卡死在初始化（进程活着、窗口永远
+# 不出现、无任何报错）。lxterminal 起不来、输入法「像坏了一样」都是这个原因。
+# 换成 root 自己的运行时目录，GTK 应用立刻正常（实测 im-ibus + Rime 直接出「你好」）。
+export XDG_RUNTIME_DIR=/tmp/claude-vm-runtime
+mkdir -p "$XDG_RUNTIME_DIR" && chmod 700 "$XDG_RUNTIME_DIR"
 if [ ! -e /usr/local/bin/claude ] && [ -x /usr/local/lib/nodejs/node-v20.18.1-linux-x64/bin/claude ]; then
   ln -sf /usr/local/lib/nodejs/node-v20.18.1-linux-x64/bin/claude /usr/local/bin/claude 2>/dev/null || true
 fi
@@ -489,6 +496,8 @@ fi
   echo "export LC_ALL='${LC_ALL:-}'"
   echo "export LANGUAGE='${LANGUAGE:-}'"
   echo "export DISPLAY='${DISPLAY}'"
+  echo "export XDG_RUNTIME_DIR='${XDG_RUNTIME_DIR:-}'"
+  echo "export DBUS_SESSION_BUS_ADDRESS='${DBUS_SESSION_BUS_ADDRESS:-}'"
   echo "export DISPLAY_MODE='${DISPLAY_MODE}'"
   echo "export PULSE_SERVER='${PULSE_SERVER:-}'"
   echo "export UPSTREAM_PROXY='${UPSTREAM_PROXY:-}'"
